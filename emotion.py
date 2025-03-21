@@ -8,18 +8,13 @@ import torchaudio
 import threading
 from transformers import HubertForSequenceClassification, Wav2Vec2FeatureExtractor
 from tqdm import tqdm
+from config import EMOTION, TEMP_DIR
 
 # Глобальные объекты для кэширования моделей
 _emotion_model = None
 _feature_extractor = None
 # Расширенный словарь эмоций с русскими названиями
-_num2emotion = {
-    0: 'нейтральный',  # neutral
-    1: 'злость',       # angry
-    2: 'радость',      # positive
-    3: 'грусть',       # sad
-    4: 'другое'        # other
-}
+_num2emotion = EMOTION['emotion_mapping']
 # Добавляем блокировку для безопасной инициализации модели в многопоточной среде
 _model_lock = threading.Lock()
 
@@ -41,8 +36,8 @@ def get_emotion_recognizer():
                 
                 print(f"[INFO] Инициализация модели анализа эмоций (устройство: {device})")
                 
-                _feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained("facebook/hubert-large-ls960-ft")
-                _emotion_model = HubertForSequenceClassification.from_pretrained("xbgoose/hubert-speech-emotion-recognition-russian-dusha-finetuned")
+                _feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(EMOTION['feature_extractor'])
+                _emotion_model = HubertForSequenceClassification.from_pretrained(EMOTION['model_path'])
                 
                 # Перемещаем модель на нужное устройство
                 _emotion_model = _emotion_model.to(device)
@@ -59,7 +54,7 @@ def analyze_segment_emotion(segment_data):
     segment_path, segment = segment_data
     
     # Максимальное количество попыток анализа
-    max_retries = 2
+    max_retries = EMOTION['max_retries']
     retry_count = 0
     
     while retry_count <= max_retries:
@@ -86,7 +81,7 @@ def analyze_segment_emotion(segment_data):
                 sampling_rate=feature_extractor.sampling_rate, 
                 return_tensors="pt",
                 padding=True,
-                max_length=16000 * 10,  # Максимальная длина 10 секунд
+                max_length=16000 * EMOTION['max_segment_duration'],  # Максимальная длина 
                 truncation=True
             )
             
@@ -140,7 +135,7 @@ def analyze_emotions(audio_path, speaker_segments):
     print("[INFO] Начало анализа эмоций...")
     
     # Минимальная длительность сегмента для надежного анализа эмоций (в секундах)
-    MIN_SEGMENT_DURATION = 5.0
+    MIN_SEGMENT_DURATION = EMOTION['min_segment_duration']
     
     # Объединяем короткие сегменты от одного спикера
     merged_segments = []
@@ -166,7 +161,7 @@ def analyze_emotions(audio_path, speaker_segments):
         print(f"[INFO] Пропущено {len(merged_segments) - len(filtered_segments)} сегментов короче {MIN_SEGMENT_DURATION} сек")
     
     # Создаем временную директорию для сегментов
-    os.makedirs("temp_segments", exist_ok=True)
+    os.makedirs(TEMP_DIR, exist_ok=True)
     
     # Подготавливаем задачи для параллельной обработки
     segment_tasks = []
@@ -179,55 +174,55 @@ def analyze_emotions(audio_path, speaker_segments):
         
         try:
             # Если длина сегмента больше 10 секунд, то делим его на части
-            if duration > 10:
+            if duration > EMOTION['max_segment_duration']:
                 segments_parts = []
                 # Вычисляем количество полных 10-секундных сегментов
-                full_segments_count = int(duration // 10)
+                full_segments_count = int(duration // EMOTION['max_segment_duration'])
                 # Вычисляем остаток
-                remainder = duration % 10
+                remainder = duration % EMOTION['max_segment_duration']
                 
                 # Если остаток меньше MIN_SEGMENT_DURATION и у нас есть хотя бы один полный сегмент,
                 # то последний полный сегмент будет длиннее на этот остаток
                 if remainder < MIN_SEGMENT_DURATION and full_segments_count > 0:
                     for x in range(full_segments_count - 1):
-                        segment_path = f"temp_segments/segment_{i}_part_{x}.wav"
+                        segment_path = f"{TEMP_DIR}/segment_{i}_part_{x}.wav"
                         (
                             ffmpeg
                             .input(audio_path)
-                            .output(segment_path, ss=start_time + x * 10, t=10, acodec='pcm_s16le', ac=1, ar='16k')
+                            .output(segment_path, ss=start_time + x * EMOTION['max_segment_duration'], t=EMOTION['max_segment_duration'], acodec='pcm_s16le', ac=1, ar='16k')
                             .run(quiet=True, overwrite_output=True)
                         )
                         segments_parts.append((segment_path, segment))
                     
                     # Последний сегмент с остатком
-                    last_segment_duration = 10 + remainder
-                    segment_path = f"temp_segments/segment_{i}_part_{full_segments_count - 1}.wav"
+                    last_segment_duration = EMOTION['max_segment_duration'] + remainder
+                    segment_path = f"{TEMP_DIR}/segment_{i}_part_{full_segments_count - 1}.wav"
                     (
                         ffmpeg
                         .input(audio_path)
-                        .output(segment_path, ss=start_time + (full_segments_count - 1) * 10, t=last_segment_duration, acodec='pcm_s16le', ac=1, ar='16k')
+                        .output(segment_path, ss=start_time + (full_segments_count - 1) * EMOTION['max_segment_duration'], t=last_segment_duration, acodec='pcm_s16le', ac=1, ar='16k')
                         .run(quiet=True, overwrite_output=True)
                     )
                     segments_parts.append((segment_path, segment))
                 else:
                     # Иначе обрабатываем все сегменты как обычно
                     for x in range(full_segments_count):
-                        segment_path = f"temp_segments/segment_{i}_part_{x}.wav"
+                        segment_path = f"{TEMP_DIR}/segment_{i}_part_{x}.wav"
                         (
                             ffmpeg
                             .input(audio_path)
-                            .output(segment_path, ss=start_time + x * 10, t=10, acodec='pcm_s16le', ac=1, ar='16k')
+                            .output(segment_path, ss=start_time + x * EMOTION['max_segment_duration'], t=EMOTION['max_segment_duration'], acodec='pcm_s16le', ac=1, ar='16k')
                             .run(quiet=True, overwrite_output=True)
                         )
                         segments_parts.append((segment_path, segment))
                     
                     # Если есть остаток и он >= MIN_SEGMENT_DURATION, создаем дополнительный сегмент
                     if remainder >= MIN_SEGMENT_DURATION:
-                        segment_path = f"temp_segments/segment_{i}_part_{full_segments_count}.wav"
+                        segment_path = f"{TEMP_DIR}/segment_{i}_part_{full_segments_count}.wav"
                         (
                             ffmpeg
                             .input(audio_path)
-                            .output(segment_path, ss=start_time + full_segments_count * 10, t=remainder, acodec='pcm_s16le', ac=1, ar='16k')
+                            .output(segment_path, ss=start_time + full_segments_count * EMOTION['max_segment_duration'], t=remainder, acodec='pcm_s16le', ac=1, ar='16k')
                             .run(quiet=True, overwrite_output=True)
                         )
                         segments_parts.append((segment_path, segment))
@@ -235,7 +230,7 @@ def analyze_emotions(audio_path, speaker_segments):
                 # Добавляем все части сегмента в задачи
                 segment_tasks.extend(segments_parts)
             else:
-                segment_path = f"temp_segments/segment_{i}.wav"
+                segment_path = f"{TEMP_DIR}/segment_{i}.wav"
                 (
                     ffmpeg
                     .input(audio_path)

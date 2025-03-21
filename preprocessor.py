@@ -6,19 +6,20 @@ from scipy import signal
 import noisereduce as nr
 import matplotlib.pyplot as plt
 from typing import Tuple, List, Optional, Union
+from config import AUDIO_PREPROCESSOR
 
 
 class AudioPreprocessor:
-    def __init__(self, target_sr: int = 16000, mono: bool = True):
+    def __init__(self, target_sr: int = None, mono: bool = None):
         """
         Инициализация препроцессора аудио
         
         Args:
-            target_sr (int): Целевая частота дискретизации (по умолчанию 16кГц)
-            mono (bool): Преобразовывать ли в моно (по умолчанию True)
+            target_sr (int): Целевая частота дискретизации (по умолчанию из конфига)
+            mono (bool): Преобразовывать ли в моно (по умолчанию из конфига)
         """
-        self.target_sr = target_sr
-        self.mono = mono
+        self.target_sr = target_sr if target_sr is not None else AUDIO_PREPROCESSOR['target_sr']
+        self.mono = mono if mono is not None else AUDIO_PREPROCESSOR['mono']
     
     def load_audio(self, file_path: str) -> Tuple[Optional[np.ndarray], Optional[int]]:
         """
@@ -85,7 +86,7 @@ class AudioPreprocessor:
             return audio / max_amplitude
         return audio
     
-    def remove_silence(self, audio: np.ndarray, top_db: int = 20) -> np.ndarray:
+    def remove_silence(self, audio: np.ndarray, top_db: int = None) -> np.ndarray:
         """
         Удаление тишины из аудио
         
@@ -96,6 +97,9 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Аудио без тишины
         """
+        if top_db is None:
+            top_db = AUDIO_PREPROCESSOR['silence_removal']['top_db']
+            
         print(f"[INFO] Удаление тишины (порог: {top_db}дБ)")
         non_silent_intervals = librosa.effects.split(audio, top_db=top_db)
         if len(non_silent_intervals) == 0:
@@ -104,7 +108,7 @@ class AudioPreprocessor:
         processed_audio = np.concatenate([audio[start:end] for start, end in non_silent_intervals])
         return processed_audio
     
-    def apply_highpass_filter(self, audio: np.ndarray, cutoff: int = 80) -> np.ndarray:
+    def apply_highpass_filter(self, audio: np.ndarray, cutoff: int = None) -> np.ndarray:
         """
         Применение фильтра высоких частот
         
@@ -115,6 +119,9 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Отфильтрованное аудио
         """
+        if cutoff is None:
+            cutoff = AUDIO_PREPROCESSOR['highpass_filter']['cutoff']
+            
         print(f"[INFO] Применение фильтра высоких частот (срез: {cutoff}Гц)")
         nyquist = 0.5 * self.target_sr
         normal_cutoff = cutoff / nyquist
@@ -197,24 +204,36 @@ class AudioPreprocessor:
         plt.show()
     
     def process_audio(self, file_path: str, output_path: str = None, 
-                     remove_silence_flag: bool = True, highpass_filter: bool = True,
-                     noise_reduction: bool = True, normalize: bool = True,
-                     visualize: bool = False) -> str:
+                     remove_silence_flag: bool = None, highpass_filter: bool = None,
+                     noise_reduction: bool = None, normalize: bool = None,
+                     visualize: bool = None) -> str:
         """
         Комплексная обработка аудиофайла
         
         Args:
             file_path (str): Путь к аудиофайлу
             output_path (str, optional): Путь для сохранения обработанного аудио
-            remove_silence_flag (bool): Удалять ли тишину
-            highpass_filter (bool): Применять ли фильтр высоких частот
-            noise_reduction (bool): Применять ли подавление шума
-            normalize (bool): Нормализовать ли аудио
-            visualize (bool): Визуализировать ли аудио до и после обработки
+            remove_silence_flag (bool, optional): Удалять ли тишину
+            highpass_filter (bool, optional): Применять ли фильтр высоких частот
+            noise_reduction (bool, optional): Применять ли подавление шума
+            normalize (bool, optional): Применять ли нормализацию
+            visualize (bool, optional): Визуализировать ли аудио
             
         Returns:
             str: Путь к обработанному аудиофайлу
         """
+        # Устанавливаем значения по умолчанию из конфига, если не указаны
+        if remove_silence_flag is None:
+            remove_silence_flag = AUDIO_PREPROCESSOR['silence_removal']['enabled']
+        if highpass_filter is None:
+            highpass_filter = AUDIO_PREPROCESSOR['highpass_filter']['enabled']
+        if noise_reduction is None:
+            noise_reduction = AUDIO_PREPROCESSOR['noise_reduction']['enabled']
+        if normalize is None:
+            normalize = AUDIO_PREPROCESSOR['normalization']['enabled']
+        if visualize is None:
+            visualize = AUDIO_PREPROCESSOR['visualization']['enabled']
+            
         if output_path is None:
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             output_path = f"{base_name}_processed.wav"

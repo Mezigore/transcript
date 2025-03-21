@@ -7,6 +7,7 @@ from tqdm import tqdm
 import ffmpeg
 import numpy as np
 import tempfile
+from config import TRANSCRIPTION, API_KEYS, TEMP_DIR
 
 # Функция для транскрипции с помощью Whisper
 def transcribe(audio_path):
@@ -18,7 +19,7 @@ def transcribe(audio_path):
     print(f"[INFO] Длительность аудио: {duration:.2f} сек")
     
     # Размер сегмента в секундах
-    segment_size = 30.0
+    segment_size = TRANSCRIPTION['segment_size']
     
     # Вычисляем количество сегментов
     num_segments = int(np.ceil(duration / segment_size))
@@ -60,8 +61,8 @@ def transcribe(audio_path):
             # Транскрибируем сегмент
             result = mlx_whisper.transcribe(
                 segment_file, 
-                path_or_hf_repo="mlx-community/whisper-large-v3-mlx", 
-                initial_prompt="Запись интервью с представителем строительной сферы"
+                path_or_hf_repo=TRANSCRIPTION['model_path'], 
+                initial_prompt=TRANSCRIPTION['initial_prompt']
             )
             
             # Корректируем временные метки с учетом начала сегмента
@@ -153,7 +154,11 @@ def merge_transcription_with_diarization(whisper_segments, speaker_segments_with
 
 
 # Основная функция
-def process_media(media_path, hf_token):
+def process_media(media_path, hf_token=None):
+    # Если токен не передан, используем из конфигурации
+    if hf_token is None:
+        hf_token = API_KEYS['huggingface']
+        
     # Извлечение аудио
     audio_result = extract_and_process_audio(media_path)
     audio_path = audio_result
@@ -187,8 +192,8 @@ def process_media(media_path, hf_token):
     return conversation_file
 
 if __name__ == "__main__":
-    # Загрузка токена
-    hf_token = "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"
+    # Загрузка токена из конфигурации
+    hf_token = API_KEYS['huggingface']
     
     # Выбор файла
     media_path = select_media_file()
@@ -197,7 +202,7 @@ if __name__ == "__main__":
         exit(1)
     
     # Обработка медиафайла
-    result = process_media(media_path, hf_token)
+    result = process_media(media_path)
     if result:
         print(f"[INFO] Обработка завершена. Результат сохранен в: {result}")
         print(f"[INFO] Полный путь: {os.path.abspath(result)}")

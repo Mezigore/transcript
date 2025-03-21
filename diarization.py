@@ -4,10 +4,15 @@ import ffmpeg
 import os
 import tempfile
 import numpy as np
+from config import DIARIZATION, API_KEYS
 
 
 # Функция для диаризации с помощью Pyannote
-def diarize(audio_path, hf_token):
+def diarize(audio_path, hf_token=None):
+    # Если токен не передан, используем из конфигурации
+    if hf_token is None:
+        hf_token = API_KEYS['huggingface']
+        
     print("[INFO] Начало диаризации аудио...")
     
     # Получаем информацию о длительности аудио файла
@@ -16,7 +21,7 @@ def diarize(audio_path, hf_token):
     print(f"[INFO] Длительность аудио: {duration:.2f} сек")
     
     # Размер сегмента в секундах
-    segment_size = 30.0
+    segment_size = DIARIZATION['segment_size']
     
     # Вычисляем количество сегментов
     num_segments = int(np.ceil(duration / segment_size))
@@ -51,7 +56,7 @@ def diarize(audio_path, hf_token):
     
     # Загружаем модель диаризации один раз
     print("[INFO] Загрузка модели диаризации...")
-    pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_token)
+    pipeline = Pipeline.from_pretrained(DIARIZATION['model_path'], use_auth_token=hf_token)
     
     # Диаризация каждого сегмента
     print("[INFO] Выполнение диаризации...")
@@ -62,7 +67,9 @@ def diarize(audio_path, hf_token):
             # Диаризация сегмента
             with tqdm(total=0, desc=f"Обработка сегмента {os.path.basename(segment_file)}", 
                      bar_format='{desc}: {elapsed}', position=1, leave=False) as pbar:
-                diarization = pipeline(segment_file, min_speakers=2, max_speakers=3)
+                diarization = pipeline(segment_file, 
+                                      min_speakers=DIARIZATION['min_speakers'], 
+                                      max_speakers=DIARIZATION['max_speakers'])
                 pbar.set_description(f"Сегмент {os.path.basename(segment_file)} обработан")
             
             # Преобразование результатов диаризации в удобный формат
