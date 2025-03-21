@@ -158,7 +158,7 @@ def process_video(video_path, hf_token):
     audio_result = extract_and_process_audio(video_path)
     audio_path = audio_result
     
-    if not audio_path:
+    if audio_path is None:
         return "Ошибка при извлечении аудио"
     
     # Транскрипция

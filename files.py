@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import ffmpeg
 import textwrap
+from typing import List, Dict, Any, Optional, Set
 from tqdm import tqdm
 from preprocessor import AudioPreprocessor
 
@@ -24,13 +25,25 @@ EMOTION_TRANSLATIONS = {
     "unknown": "неизвестно"
 }
 
-# Функция для поиска MP4 файлов в текущей директории
-def find_mp4_files():
+
+def find_mp4_files() -> List[str]:
+    """
+    Находит все MP4 файлы в текущей директории.
+    
+    Returns:
+        List[str]: Список имен MP4 файлов
+    """
     mp4_files = [f for f in os.listdir('.') if f.lower().endswith('.mp4')]
     return mp4_files
 
-# Функция для выбора MP4 файла
-def select_mp4_file():
+
+def select_mp4_file() -> Optional[str]:
+    """
+    Позволяет пользователю выбрать MP4 файл из текущей директории.
+    
+    Returns:
+        Optional[str]: Имя выбранного файла или None, если файлы не найдены
+    """
     mp4_files = find_mp4_files()
     
     if not mp4_files:
@@ -58,8 +71,17 @@ def select_mp4_file():
     
     return selected_file
 
-# Функция для извлечения аудио из видео
-def extract_and_process_audio(input_video):
+
+def extract_and_process_audio(input_video: str) -> Optional[str]:
+    """
+    Извлекает аудио из видеофайла и выполняет его предобработку.
+    
+    Args:
+        input_video (str): Имя входного видеофайла
+        
+    Returns:
+        Optional[str]: Путь к обработанному аудиофайлу или None в случае ошибки
+    """
     input_video_name = input_video.replace(".mp4", "")
     output_audio = "audio-input.wav"
     processor = AudioPreprocessor()
@@ -67,8 +89,6 @@ def extract_and_process_audio(input_video):
     print(f"Извлечение аудио из {input_video}...")
     
     # Создаем прогресс-бар для процесса извлечения аудио
-    # Так как ffmpeg не предоставляет информацию о прогрессе в тихом режиме,
-    # используем неопределенный прогресс-бар, показывающий только время выполнения
     with tqdm(total=0, desc="Извлечение аудио", bar_format='{desc}: {elapsed}') as pbar:
         try:
             (
@@ -79,15 +99,29 @@ def extract_and_process_audio(input_video):
             )
             pbar.set_description("Извлечение аудио завершено")
             print(f"\nАудио успешно извлечено: {output_audio}")
-            output_audio = processor.process(output_audio, visualize=True)
-            return output_audio,
-        except Exception as e:
+            output_audio = processor.process(output_audio, visualize=False)
+            return output_audio
+        except ffmpeg.Error as e:
             pbar.set_description("Ошибка извлечения аудио")
-            print(f"\nОшибка при извлечении аудио: {e}")
-            return None, None, None
+            print(f"\nОшибка при извлечении аудио: {e.stderr.decode() if hasattr(e, 'stderr') else str(e)}")
+            return None
+        except Exception as e:
+            pbar.set_description("Ошибка обработки аудио")
+            print(f"\nОшибка при обработке аудио: {e}")
+            return None
 
-# Функция для создания CSV файла
-def create_csv_file(merged_segments, output_file):
+
+def create_csv_file(merged_segments: List[Dict[str, Any]], output_file: str) -> str:
+    """
+    Создает CSV файл из сегментов транскрипции.
+    
+    Args:
+        merged_segments (List[Dict[str, Any]]): Список сегментов с транскрипцией
+        output_file (str): Имя выходного файла
+        
+    Returns:
+        str: Путь к созданному CSV файлу
+    """
     print(f"Создание CSV файла: {output_file}")
     
     # Создаем DataFrame из сегментов
@@ -118,15 +152,26 @@ def create_csv_file(merged_segments, output_file):
     print(f"CSV файл успешно создан: {output_file}")
     return output_file
 
-# Функция для создания файла в формате разговора (conversation format)
-def create_conversation_file(merged_segments, output_file):
+
+def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file: str) -> str:
+    """
+    Создает файл в формате разговора (conversation format) из сегментов транскрипции.
+    Формат: [start_time - end_time] Speaker (emotion): text
+    
+    Args:
+        merged_segments (List[Dict[str, Any]]): Список сегментов с транскрипцией
+        output_file (str): Имя выходного файла
+        
+    Returns:
+        str: Путь к созданному файлу разговора
+    """
     print(f"Создание файла в формате разговора: {output_file}")
     
     # Создаем маппинг спикеров на буквы (A, B, C...)
-    unique_speakers = sorted(list(set(segment['speaker'] for segment in merged_segments)))
-    speaker_mapping = {speaker: chr(65 + i) for i, speaker in enumerate(unique_speakers)}
+    unique_speakers: Set[str] = set(segment['speaker'] for segment in merged_segments)
+    speaker_mapping = {speaker: chr(65 + i) for i, speaker in enumerate(sorted(list(unique_speakers)))}
     
-    # Объединяем последовательные сегменты с одинаковым спикером и эмоцией с прогресс-баром
+    # Объединяем последовательные сегменты с одинаковым спикером и эмоцией
     combined_segments = []
     current_segment = None
     
@@ -165,7 +210,7 @@ def create_conversation_file(merged_segments, output_file):
             speaker = segment['speaker']
             emotion_eng = segment.get('emotion', 'unknown')
             # Переводим эмоцию на русский язык
-            emotion_rus = EMOTION_TRANSLATIONS.get(emotion_eng, emotion_eng)
+            emotion_rus = EMOTION_TRANSLATIONS.get(emotion_eng.lower(), emotion_eng)
             
             # Добавляем процент уверенности, если он доступен
             confidence = segment.get('emotion_confidence', 0)
@@ -186,8 +231,7 @@ def create_conversation_file(merged_segments, output_file):
             wrapped_lines = textwrap.wrap(text, width=80, initial_indent='    ', subsequent_indent='    ')
             
             # Добавляем текст с отступом
-            for wrapped_line in wrapped_lines:
-                conversation_lines.append(wrapped_line)
+            conversation_lines.extend(wrapped_lines)
             
             # Добавляем пустую строку после сегмента для лучшей читаемости
             conversation_lines.append("")
@@ -201,5 +245,5 @@ def create_conversation_file(merged_segments, output_file):
             f.write('\n'.join(conversation_lines))
         pbar.update(1)
     
-    print(f"Файл в формате разговора успешно создан: {output_file}")
+    print(f"Файл разговора успешно создан: {output_file}")
     return output_file
