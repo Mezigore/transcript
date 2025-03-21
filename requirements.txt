@@ -1,0 +1,16 @@
+ffmpeg
+mlx_whisper
+pyannote.audio
+torch
+speechbrain
+panda
+pandas
+torchaudio
+transformers
+tqdm
+numpy
+librosa
+soundfile
+scipy
+noisereduce
+matplotlib
