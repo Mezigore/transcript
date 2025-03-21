@@ -7,3 +7,4 @@ __pycache__/preprocessor.cpython-311.pyc
 *.wav
 *.mp4
 *.csv
+*.txt

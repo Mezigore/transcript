@@ -30,12 +30,12 @@ class AudioPreprocessor:
         Returns:
             tuple: аудиоданные и частота дискретизации
         """
-        print(f"Загрузка аудио: {file_path}")
+        print(f"[INFO] Загрузка аудио: {file_path}")
         try:
             audio, sr = librosa.load(file_path, sr=None, mono=self.mono)
             return audio, sr
         except Exception as e:
-            print(f"Ошибка при загрузке аудио: {e}")
+            print(f"[ОШИБКА] Не удалось загрузить аудио: {e}")
             return None, None
     
     def resample(self, audio: np.ndarray, orig_sr: int) -> np.ndarray:
@@ -50,7 +50,7 @@ class AudioPreprocessor:
             np.ndarray: Ресемплированное аудио
         """
         if orig_sr != self.target_sr:
-            print(f"Ресемплинг с {orig_sr}Гц до {self.target_sr}Гц")
+            print(f"[INFO] Ресемплинг с {orig_sr}Гц до {self.target_sr}Гц")
             return librosa.resample(audio, orig_sr=orig_sr, target_sr=self.target_sr)
         return audio
     
@@ -65,7 +65,7 @@ class AudioPreprocessor:
             np.ndarray: Моно аудио
         """
         if len(audio.shape) > 1 and audio.shape[0] == 2:
-            print("Преобразование стерео в моно")
+            print("[INFO] Преобразование стерео в моно")
             return np.mean(audio, axis=0)
         return audio
     
@@ -79,7 +79,7 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Нормализованное аудио
         """
-        print("Нормализация амплитуды")
+        print("[INFO] Нормализация амплитуды")
         max_amplitude = np.max(np.abs(audio))
         if max_amplitude > 0:
             return audio / max_amplitude
@@ -96,10 +96,10 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Аудио без тишины
         """
-        print(f"Удаление тишины (порог: {top_db}дБ)")
+        print(f"[INFO] Удаление тишины (порог: {top_db}дБ)")
         non_silent_intervals = librosa.effects.split(audio, top_db=top_db)
         if len(non_silent_intervals) == 0:
-            print("Предупреждение: Не найдены не-тихие интервалы, возвращаем исходное аудио")
+            print("[ПРЕДУПРЕЖДЕНИЕ] Не найдены не-тихие интервалы, возвращаем исходное аудио")
             return audio
         processed_audio = np.concatenate([audio[start:end] for start, end in non_silent_intervals])
         return processed_audio
@@ -115,7 +115,7 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Отфильтрованное аудио
         """
-        print(f"Применение фильтра высоких частот (срез: {cutoff}Гц)")
+        print(f"[INFO] Применение фильтра высоких частот (срез: {cutoff}Гц)")
         nyquist = 0.5 * self.target_sr
         normal_cutoff = cutoff / nyquist
         b, a = signal.butter(4, normal_cutoff, btype='high', analog=False)
@@ -132,7 +132,7 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Аудио с подавленным шумом
         """
-        print("Подавление шума")
+        print("[INFO] Подавление шума")
         # Если образец шума не предоставлен, используем первые 1000 мс
         if noise_clip is None and len(audio) > int(self.target_sr):
             noise_clip = audio[:int(self.target_sr)]
@@ -144,7 +144,7 @@ class AudioPreprocessor:
             else:
                 return nr.reduce_noise(y=audio, sr=self.target_sr)
         except Exception as e:
-            print(f"Ошибка при подавлении шума: {e}")
+            print(f"[ОШИБКА] Не удалось подавить шум: {e}")
             return audio
     
     def trim_long_silences(self, audio: np.ndarray, frame_length: int = 1024, 
@@ -161,7 +161,7 @@ class AudioPreprocessor:
         Returns:
             np.ndarray: Аудио с обрезанными длинными участками тишины
         """
-        print("Обрезка длинных участков тишины")
+        print("[INFO] Обрезка длинных участков тишины")
         # Вычисление энергии сигнала
         energy = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
         
@@ -196,34 +196,33 @@ class AudioPreprocessor:
         plt.ylabel("Амплитуда")
         plt.show()
     
-    def process(self, file_path: str, output_path: Optional[str] = None, visualize: bool = False, 
-               noise_reduce: bool = True, highpass: bool = True, 
-               remove_silence_flag: bool = True, normalize: bool = True) -> str:
+    def process_audio(self, file_path: str, output_path: str = None, 
+                     remove_silence_flag: bool = True, highpass_filter: bool = True,
+                     noise_reduction: bool = True, normalize: bool = True,
+                     visualize: bool = False) -> str:
         """
-        Полный процесс предобработки аудио
+        Комплексная обработка аудиофайла
         
         Args:
-            file_path (str): Путь к входному аудиофайлу
+            file_path (str): Путь к аудиофайлу
             output_path (str, optional): Путь для сохранения обработанного аудио
-            visualize (bool): Визуализировать ли аудио до и после обработки
-            noise_reduce (bool): Применять ли подавление шума
-            highpass (bool): Применять ли фильтр высоких частот
             remove_silence_flag (bool): Удалять ли тишину
-            normalize (bool): Нормализовать ли амплитуду
+            highpass_filter (bool): Применять ли фильтр высоких частот
+            noise_reduction (bool): Применять ли подавление шума
+            normalize (bool): Нормализовать ли аудио
+            visualize (bool): Визуализировать ли аудио до и после обработки
             
         Returns:
             str: Путь к обработанному аудиофайлу
         """
-        # Если выходной путь не указан, создаем его на основе входного
         if output_path is None:
-            base_name = os.path.basename(file_path)
-            name, ext = os.path.splitext(base_name)
-            output_path = f"{name}_processed{ext}"
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            output_path = f"{base_name}_processed.wav"
         
         # Загрузка аудио
         audio, sr = self.load_audio(file_path)
         if audio is None or sr is None:
-            raise ValueError(f"Не удалось загрузить аудиофайл: {file_path}")
+            raise ValueError(f"[ОШИБКА] Не удалось загрузить аудиофайл: {file_path}")
         
         # Визуализация исходного аудио
         if visualize:
@@ -233,170 +232,173 @@ class AudioPreprocessor:
         if self.mono:
             audio = self.convert_to_mono(audio)
         
-        # Ресемплинг до целевой частоты
-        if sr != self.target_sr:
-            audio = self.resample(audio, sr)
-            sr = self.target_sr
+        # Ресемплинг, если необходимо
+        audio = self.resample(audio, sr)
+        sr = self.target_sr
         
         # Применение фильтра высоких частот
-        if highpass:
+        if highpass_filter:
             audio = self.apply_highpass_filter(audio)
         
         # Подавление шума
-        if noise_reduce:
+        if noise_reduction:
             audio = self.reduce_noise(audio)
         
         # Удаление тишины
         if remove_silence_flag:
             audio = self.remove_silence(audio)
         
-        # Нормализация амплитуды
+        # Нормализация
         if normalize:
             audio = self.normalize_audio(audio)
-        
-        # Обрезка длинных участков тишины
-        audio = self.trim_long_silences(audio)
         
         # Визуализация обработанного аудио
         if visualize:
             self.visualize_audio(audio, sr, "Обработанное аудио")
         
         # Сохранение обработанного аудио
-        print(f"Сохранение обработанного аудио: {output_path}")
+        print(f"[INFO] Сохранение обработанного аудио: {output_path}")
         sf.write(output_path, audio, sr)
         
         return output_path
     
-    def segment_audio(self, audio: np.ndarray, segment_length_ms: int = 30000) -> List[np.ndarray]:
+    def segment_audio(self, audio: np.ndarray, segment_length_ms: int = 1000) -> List[np.ndarray]:
         """
-        Разделение длинного аудио на сегменты фиксированной длины
+        Разделение аудио на сегменты фиксированной длины
         
         Args:
             audio (np.ndarray): Аудиоданные
             segment_length_ms (int): Длина сегмента в миллисекундах
             
         Returns:
-            list: Список сегментов аудио
+            List[np.ndarray]: Список сегментов аудио
         """
-        # Вычисляем длину сегмента в сэмплах
+        # Вычисление длины сегмента в сэмплах
         segment_length = int(self.target_sr * segment_length_ms / 1000)
         
-        # Разделяем аудио на сегменты
+        # Разделение аудио на сегменты
         segments = []
         for i in range(0, len(audio), segment_length):
-            segment = audio[i:i + segment_length]
+            segment = audio[i:i+segment_length]
+            # Если последний сегмент короче, дополняем его тишиной
             if len(segment) < segment_length:
-                # Если последний сегмент короче, дополняем его тишиной
                 segment = np.pad(segment, (0, segment_length - len(segment)))
             segments.append(segment)
         
-        print(f"Аудио разделено на {len(segments)} сегментов по {segment_length_ms} мс")
+        print(f"[INFO] Аудио разделено на {len(segments)} сегментов по {segment_length_ms} мс")
         return segments
     
     def apply_vad(self, audio: np.ndarray, frame_duration_ms: int = 30, 
-                 threshold: float = 0.3) -> np.ndarray:
+                 aggressiveness: int = 3) -> np.ndarray:
         """
-        Применение детектора голосовой активности (VAD)
+        Применение Voice Activity Detection (VAD)
         
         Args:
             audio (np.ndarray): Аудиоданные
-            frame_duration_ms (int): Длительность фрейма в мс
-            threshold (float): Порог для определения голосовой активности
+            frame_duration_ms (int): Длительность фрейма в миллисекундах
+            aggressiveness (int): Агрессивность VAD (0-3)
             
         Returns:
-            np.ndarray: Маска голосовой активности (1 - речь, 0 - не речь)
+            np.ndarray: Маска VAD (1 - речь, 0 - тишина)
         """
-        # Вычисляем длину фрейма в сэмплах
+        try:
+            import webrtcvad
+        except ImportError:
+            print("[ПРЕДУПРЕЖДЕНИЕ] webrtcvad не установлен. Установите его с помощью 'pip install webrtcvad'")
+            return np.ones(len(audio))
+        
+        vad = webrtcvad.Vad(aggressiveness)
+        
+        # Преобразование аудио в формат, подходящий для VAD
         frame_length = int(self.target_sr * frame_duration_ms / 1000)
-        hop_length = frame_length // 2
+        frames = []
+        for i in range(0, len(audio), frame_length):
+            frame = audio[i:i+frame_length]
+            if len(frame) < frame_length:
+                frame = np.pad(frame, (0, frame_length - len(frame)))
+            frames.append(frame)
         
-        # Вычисляем энергию сигнала для каждого фрейма
-        energy = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
+        # Применение VAD к каждому фрейму
+        vad_mask = np.zeros(len(frames))
+        for i, frame in enumerate(frames):
+            # Преобразование в формат int16
+            frame_int16 = (frame * 32767).astype(np.int16).tobytes()
+            try:
+                vad_mask[i] = vad.is_speech(frame_int16, self.target_sr)
+            except:
+                vad_mask[i] = 1  # В случае ошибки считаем, что это речь
         
-        # Применяем пороговое значение для определения голосовой активности
-        vad_mask = (energy > threshold).astype(int)
-        
-        # Расширяем маску до размера аудио
-        vad_mask_expanded = np.repeat(vad_mask, hop_length)
-        
-        # Обрезаем или дополняем до длины аудио
+        # Расширение маски до размера аудио
+        vad_mask_expanded = np.repeat(vad_mask, frame_length)
         if len(vad_mask_expanded) > len(audio):
             vad_mask_expanded = vad_mask_expanded[:len(audio)]
         elif len(vad_mask_expanded) < len(audio):
             vad_mask_expanded = np.pad(vad_mask_expanded, (0, len(audio) - len(vad_mask_expanded)))
         
-        print(f"Применен VAD, обнаружено {np.sum(vad_mask)} фреймов с речью из {len(vad_mask)}")
+        print(f"[INFO] Применен VAD, обнаружено {np.sum(vad_mask)} фреймов с речью из {len(vad_mask)}")
         return vad_mask_expanded
     
     def apply_spectral_subtraction(self, audio: np.ndarray, 
-                                  noise_clip: Optional[np.ndarray] = None) -> np.ndarray:
+                                  noise_clip: Optional[np.ndarray] = None,
+                                  frame_length: int = 2048,
+                                  hop_length: int = 512,
+                                  alpha: float = 2.0) -> np.ndarray:
         """
-        Применение спектрального вычитания для подавления шума
+        Спектральное вычитание для подавления шума
         
-        Args:
-            audio (np.ndarray): Аудиоданные
-            noise_clip (np.ndarray, optional): Образец шума
-            
         Returns:
             np.ndarray: Аудио с подавленным шумом
         """
-        print("Применение спектрального вычитания")
+        print("[INFO] Применение спектрального вычитания")
         
         # Если образец шума не предоставлен, используем первую секунду аудио
         if noise_clip is None and len(audio) > self.target_sr:
             noise_clip = audio[:self.target_sr]
         elif noise_clip is None:
-            print("Предупреждение: Не предоставлен образец шума и аудио слишком короткое")
+            print("[ПРЕДУПРЕЖДЕНИЕ] Не предоставлен образец шума и аудио слишком короткое")
             return audio
         
         # Параметры для STFT
-        n_fft = 2048
-        hop_length = 512
+        n_fft = frame_length
         
-        # Вычисляем STFT для аудио и шума
-        audio_stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
+        # STFT для шума
         noise_stft = librosa.stft(noise_clip, n_fft=n_fft, hop_length=hop_length)
+        noise_power = np.mean(np.abs(noise_stft)**2, axis=1)
         
-        # Вычисляем спектр мощности шума (усредненный по времени)
-        noise_power = np.mean(np.abs(noise_stft)**2, axis=1, keepdims=True)
-        
-        # Вычисляем спектр мощности аудио
+        # STFT для аудио
+        audio_stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
         audio_power = np.abs(audio_stft)**2
+        audio_phase = np.angle(audio_stft)
         
-        # Применяем спектральное вычитание (с порогом для избежания отрицательных значений)
-        gain = np.maximum(audio_power - noise_power, 0.01 * noise_power) / audio_power
+        # Спектральное вычитание
+        power_diff = audio_power - alpha * noise_power[:, np.newaxis]
+        power_diff = np.maximum(power_diff, 0.01 * audio_power)  # Спектральный пол
         
-        # Применяем полученный коэффициент усиления к исходному STFT
-        audio_stft_denoised = audio_stft * gain
-        
-        # Выполняем обратное STFT для получения очищенного аудио
-        audio_denoised = librosa.istft(audio_stft_denoised, hop_length=hop_length)
-        
-        # Обрезаем или дополняем до длины исходного аудио
-        if len(audio_denoised) > len(audio):
-            audio_denoised = audio_denoised[:len(audio)]
-        elif len(audio_denoised) < len(audio):
-            audio_denoised = np.pad(audio_denoised, (0, len(audio) - len(audio_denoised)))
+        # Восстановление сигнала
+        audio_stft_denoised = np.sqrt(power_diff) * np.exp(1j * audio_phase)
+        audio_denoised = librosa.istft(audio_stft_denoised, hop_length=hop_length, length=len(audio))
         
         return audio_denoised
 
 
 # Пример использования
 if __name__ == "__main__":
-    # Создание экземпляра препроцессора
-    preprocessor = AudioPreprocessor(target_sr=16000, mono=True)
+    import sys
     
-    # Пример обработки аудиофайла
-    input_file = "example.wav"
-    if os.path.exists(input_file):
-        output_file = preprocessor.process(
-            input_file, 
-            visualize=True,
-            noise_reduce=True,
-            highpass=True,
-            remove_silence_flag=True,
-            normalize=True
-        )
-        print(f"Обработанный файл сохранен как: {output_file}")
-    else:
-        print(f"Файл {input_file} не найден. Укажите путь к существующему аудиофайлу.")
+    if len(sys.argv) > 1:
+        input_file = sys.argv[1]
+        output_file = sys.argv[2] if len(sys.argv) > 2 else None
+        
+        if os.path.exists(input_file):
+            preprocessor = AudioPreprocessor(target_sr=16000, mono=True)
+            output_file = preprocessor.process_audio(
+                input_file,
+                output_path=output_file,
+                highpass_filter=True,
+                noise_reduction=True,
+                remove_silence_flag=True,
+                normalize=True
+            )
+            print(f"[INFO] Обработанный файл сохранен как: {output_file}")
+        else:
+            print(f"[ОШИБКА] Файл {input_file} не найден. Укажите путь к существующему аудиофайлу.")

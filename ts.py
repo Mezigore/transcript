@@ -10,12 +10,12 @@ import tempfile
 
 # Функция для транскрипции с помощью Whisper
 def transcribe(audio_path):
-    print("Запуск транскрипции с помощью Whisper...")
+    print("[INFO] Начало транскрипции аудио...")
     
     # Получаем информацию о длительности аудио файла
     probe = ffmpeg.probe(audio_path)
     duration = float(probe['format']['duration'])
-    print(f"Длительность аудио: {duration:.2f} секунд")
+    print(f"[INFO] Длительность аудио: {duration:.2f} сек")
     
     # Размер сегмента в секундах
     segment_size = 30.0
@@ -27,10 +27,10 @@ def transcribe(audio_path):
     temp_dir = tempfile.mkdtemp()
     
     # Разбиваем аудио на сегменты
-    print("Разбиение аудио на сегменты...")
+    print("[INFO] Разбиение аудио на сегменты...")
     segment_files = []
     
-    for i in tqdm(range(num_segments), desc="Подготовка сегментов аудио", unit="сегмент"):
+    for i in tqdm(range(num_segments), desc="Подготовка сегментов", unit="сегмент"):
         start_time = i * segment_size
         # Для последнего сегмента берем оставшуюся длительность
         if i == num_segments - 1:
@@ -49,13 +49,13 @@ def transcribe(audio_path):
             )
             segment_files.append((segment_file, start_time))
         except Exception as e:
-            print(f"Ошибка при создании сегмента {i}: {e}")
+            print(f"[ОШИБКА] Не удалось создать сегмент {i}: {e}")
     
     # Транскрибируем каждый сегмент
-    print("Транскрипция сегментов...")
+    print("[INFO] Выполнение транскрипции...")
     all_segments = []
     
-    for segment_file, start_time in tqdm(segment_files, desc="Транскрипция сегментов", unit="сегмент"):
+    for segment_file, start_time in tqdm(segment_files, desc="Транскрипция", unit="сегмент"):
         try:
             # Транскрибируем сегмент
             result = mlx_whisper.transcribe(
@@ -71,7 +71,7 @@ def transcribe(audio_path):
                 all_segments.append(segment)
             
         except Exception as e:
-            print(f"Ошибка при транскрипции сегмента {segment_file}: {e}")
+            print(f"[ОШИБКА] Не удалось транскрибировать сегмент {segment_file}: {e}")
     
     # Сортируем сегменты по времени начала
     all_segments.sort(key=lambda x: x["start"])
@@ -83,30 +83,30 @@ def transcribe(audio_path):
     }
     
     # Очищаем временные файлы
-    print("Очистка временных файлов...")
+    print("[INFO] Очистка временных файлов...")
     for segment_file, _ in segment_files:
         try:
             os.remove(segment_file)
         except Exception as e:
-            print(f"Ошибка при удалении временного файла {segment_file}: {e}")
+            print(f"[ПРЕДУПРЕЖДЕНИЕ] Не удалось удалить файл {segment_file}: {e}")
     
     try:
         os.rmdir(temp_dir)
     except Exception as e:
-        print(f"Ошибка при удалении временной директории: {e}")
+        print(f"[ПРЕДУПРЕЖДЕНИЕ] Не удалось удалить временную директорию: {e}")
     
-    print(f"Язык транскрипции: {result['language']}")
+    print(f"[INFO] Язык транскрипции: {result['language']}")
     
-    print("Транскрипция:")
+    print("[INFO] Результат транскрипции:")
     # Добавляем прогресс-бар для вывода сегментов транскрипции
-    for segment in tqdm(result["segments"], desc="Обработка сегментов транскрипции", unit="сегмент"):
+    for segment in tqdm(result["segments"], desc="Обработка сегментов", unit="сегмент"):
         print(f"[{segment['start']:.2f}s -> {segment['end']:.2f}s] {segment['text']}")
     
     return result["language"], result
 
 # Функция для объединения результатов транскрипции и диаризации
 def merge_transcription_with_diarization(whisper_segments, speaker_segments_with_emotions):
-    print("Объединение транскрипции с диаризацией и эмоциями...")
+    print("[INFO] Объединение транскрипции с диаризацией и эмоциями...")
     merged_segments = []
     
     # Используем segments из результата Whisper
@@ -153,13 +153,13 @@ def merge_transcription_with_diarization(whisper_segments, speaker_segments_with
 
 
 # Основная функция
-def process_video(video_path, hf_token):
+def process_media(media_path, hf_token):
     # Извлечение аудио
-    audio_result = extract_and_process_audio(video_path)
+    audio_result = extract_and_process_audio(media_path)
     audio_path = audio_result
     
     if audio_path is None:
-        return "Ошибка при извлечении аудио"
+        return "[ОШИБКА] Не удалось извлечь аудио"
     
     # Транскрипция
     language, whisper_segments = transcribe(audio_path)
@@ -174,12 +174,8 @@ def process_video(video_path, hf_token):
     merged_segments = merge_transcription_with_diarization(whisper_segments, speaker_segments_with_emotions)
     
     # Базовое имя для выходных файлов
-    base_output = os.path.splitext(video_path)[0]
-    output_csv = f"{base_output}_transcript.csv"
+    base_output = os.path.splitext(os.path.basename(media_path))[0]
     output_conversation = f"{base_output}_transcript.txt"
-    
-    # Создание CSV файла (для совместимости)
-    csv_file = create_csv_file(merged_segments, output_csv)
     
     # Создание файла в формате разговора (основной формат для LLM)
     conversation_file = create_conversation_file(merged_segments, output_conversation)
@@ -188,20 +184,22 @@ def process_video(video_path, hf_token):
     if os.path.exists(audio_path):
         os.remove(audio_path)
     
-    return output_conversation
+    return conversation_file
 
 if __name__ == "__main__":
     # Загрузка токена
     hf_token = "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"
     
     # Выбор файла
-    video_path = select_mp4_file()
-    if not video_path:
+    media_path = select_media_file()
+    if not media_path:
+        print("[ОШИБКА] Файл не выбран. Поместите медиафайлы в директорию 'input'.")
         exit(1)
     
-    # Обработка видео
-    result = process_video(video_path, hf_token)
+    # Обработка медиафайла
+    result = process_media(media_path, hf_token)
     if result:
-        print(f"Обработка завершена. Результат: {result}")
+        print(f"[INFO] Обработка завершена. Результат сохранен в: {result}")
+        print(f"[INFO] Полный путь: {os.path.abspath(result)}")
     else:
-        print("Ошибка при обработке видео.")
+        print("[ОШИБКА] Ошибка при обработке медиафайла.")

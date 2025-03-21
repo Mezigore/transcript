@@ -8,12 +8,12 @@ import numpy as np
 
 # Функция для диаризации с помощью Pyannote
 def diarize(audio_path, hf_token):
-    print("Запуск диаризации с помощью Pyannote...")
+    print("[INFO] Начало диаризации аудио...")
     
     # Получаем информацию о длительности аудио файла
     probe = ffmpeg.probe(audio_path)
     duration = float(probe['format']['duration'])
-    print(f"Длительность аудио: {duration:.2f} секунд")
+    print(f"[INFO] Длительность аудио: {duration:.2f} сек")
     
     # Размер сегмента в секундах
     segment_size = 30.0
@@ -25,10 +25,10 @@ def diarize(audio_path, hf_token):
     temp_dir = tempfile.mkdtemp()
     
     # Разбиваем аудио на сегменты
-    print("Разбиение аудио на сегменты для диаризации...")
+    print("[INFO] Разбиение аудио на сегменты...")
     segment_files = []
     
-    for i in tqdm(range(num_segments), desc="Подготовка сегментов аудио для диаризации", unit="сегмент"):
+    for i in tqdm(range(num_segments), desc="Подготовка сегментов", unit="сегмент"):
         start_time = i * segment_size
         # Для последнего сегмента берем оставшуюся длительность
         if i == num_segments - 1:
@@ -47,20 +47,20 @@ def diarize(audio_path, hf_token):
             )
             segment_files.append((segment_file, start_time))
         except Exception as e:
-            print(f"Ошибка при создании сегмента {i}: {e}")
+            print(f"[ОШИБКА] Не удалось создать сегмент {i}: {e}")
     
     # Загружаем модель диаризации один раз
-    print("Загрузка модели диаризации...")
+    print("[INFO] Загрузка модели диаризации...")
     pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_token)
     
     # Диаризация каждого сегмента
-    print("Диаризация сегментов...")
+    print("[INFO] Выполнение диаризации...")
     all_speaker_segments = []
     
-    for segment_file, start_time in tqdm(segment_files, desc="Диаризация сегментов", unit="сегмент"):
+    for segment_file, start_time in tqdm(segment_files, desc="Диаризация", unit="сегмент"):
         try:
             # Диаризация сегмента
-            with tqdm(total=0, desc=f"Диаризация сегмента {os.path.basename(segment_file)}", 
+            with tqdm(total=0, desc=f"Обработка сегмента {os.path.basename(segment_file)}", 
                      bar_format='{desc}: {elapsed}', position=1, leave=False) as pbar:
                 diarization = pipeline(segment_file, min_speakers=2, max_speakers=3)
                 pbar.set_description(f"Сегмент {os.path.basename(segment_file)} обработан")
@@ -75,23 +75,23 @@ def diarize(audio_path, hf_token):
                 })
             
         except Exception as e:
-            print(f"Ошибка при диаризации сегмента {segment_file}: {e}")
+            print(f"[ОШИБКА] Не удалось выполнить диаризацию сегмента {segment_file}: {e}")
     
     # Сортируем сегменты по времени начала
     all_speaker_segments.sort(key=lambda x: x["start"])
     
     # Очищаем временные файлы
-    print("Очистка временных файлов...")
+    print("[INFO] Очистка временных файлов...")
     for segment_file, _ in segment_files:
         try:
             os.remove(segment_file)
         except Exception as e:
-            print(f"Ошибка при удалении временного файла {segment_file}: {e}")
+            print(f"[ПРЕДУПРЕЖДЕНИЕ] Не удалось удалить файл {segment_file}: {e}")
     
     try:
         os.rmdir(temp_dir)
     except Exception as e:
-        print(f"Ошибка при удалении временной директории: {e}")
+        print(f"[ПРЕДУПРЕЖДЕНИЕ] Не удалось удалить временную директорию: {e}")
     
-    print(f"\nВсего найдено {len(all_speaker_segments)} сегментов с {len(set([s['speaker'] for s in all_speaker_segments]))} спикерами")
+    print(f"[INFO] Найдено {len(all_speaker_segments)} сегментов с {len(set([s['speaker'] for s in all_speaker_segments]))} спикерами")
     return all_speaker_segments

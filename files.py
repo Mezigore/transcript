@@ -26,131 +26,124 @@ EMOTION_TRANSLATIONS = {
 }
 
 
-def find_mp4_files() -> List[str]:
+def find_media_files() -> List[str]:
     """
-    Находит все MP4 файлы в текущей директории.
+    Находит все аудио и видео файлы в директории input.
     
     Returns:
-        List[str]: Список имен MP4 файлов
+        List[str]: Список имен аудио и видео файлов
     """
-    mp4_files = [f for f in os.listdir('.') if f.lower().endswith('.mp4')]
-    return mp4_files
+    # Поддерживаемые форматы видео
+    video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv', '.wmv', '.m4v']
+    # Поддерживаемые форматы аудио
+    audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma']
+    # Все поддерживаемые форматы
+    media_extensions = video_extensions + audio_extensions
+    
+    # Проверяем существование директории input
+    input_dir = 'input'
+    if not os.path.exists(input_dir):
+        os.makedirs(input_dir)
+        
+    media_files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and 
+                  any(f.lower().endswith(ext) for ext in media_extensions)]
+    return media_files
 
 
-def select_mp4_file() -> Optional[str]:
+def select_media_file() -> Optional[str]:
     """
-    Позволяет пользователю выбрать MP4 файл из текущей директории.
+    Позволяет пользователю выбрать аудио или видео файл из директории input.
     
     Returns:
-        Optional[str]: Имя выбранного файла или None, если файлы не найдены
+        Optional[str]: Путь к выбранному файлу или None, если файлы не найдены
     """
-    mp4_files = find_mp4_files()
+    media_files = find_media_files()
     
-    if not mp4_files:
-        print("Ошибка: MP4 файлы не найдены в текущей директории.")
+    if not media_files:
+        print("[ОШИБКА] Аудио или видео файлы не найдены в директории input.")
         return None
     
-    if len(mp4_files) == 1:
-        selected_file = mp4_files[0]
-        print(f"Найден один MP4 файл: {selected_file}")
+    if len(media_files) == 1:
+        selected_file = media_files[0]
+        print(f"[INFO] Найден медиа файл: {selected_file}")
     else:
-        print("Найдено несколько MP4 файлов:")
-        for i, file in enumerate(mp4_files, 1):
-            print(f"{i}. {file}")
+        print("[INFO] Найдено несколько медиа файлов:")
+        for i, file in enumerate(media_files, 1):
+            print(f"  {i}. {file}")
         
         try:
-            choice = int(input("Выберите номер файла для обработки (или нажмите Enter для выбора первого файла): ") or "1")
-            if 1 <= choice <= len(mp4_files):
-                selected_file = mp4_files[choice - 1]
+            choice = int(input("[ВВОД] Выберите номер файла (или Enter для первого файла): ") or "1")
+            if 1 <= choice <= len(media_files):
+                selected_file = media_files[choice - 1]
             else:
-                print("Неверный выбор. Используется первый файл.")
-                selected_file = mp4_files[0]
+                print("[ПРЕДУПРЕЖДЕНИЕ] Неверный выбор. Используется первый файл.")
+                selected_file = media_files[0]
         except ValueError:
-            print("Неверный ввод. Используется первый файл.")
-            selected_file = mp4_files[0]
+            print("[ПРЕДУПРЕЖДЕНИЕ] Неверный ввод. Используется первый файл.")
+            selected_file = media_files[0]
     
-    return selected_file
+    # Возвращаем полный путь к файлу
+    return os.path.join('input', selected_file)
 
 
-def extract_and_process_audio(input_video: str) -> Optional[str]:
+def extract_and_process_audio(input_media: str) -> Optional[str]:
     """
-    Извлекает аудио из видеофайла и выполняет его предобработку.
+    Извлекает аудио из видеофайла или обрабатывает аудиофайл напрямую.
     
     Args:
-        input_video (str): Имя входного видеофайла
+        input_media (str): Имя входного аудио или видеофайла
         
     Returns:
         Optional[str]: Путь к обработанному аудиофайлу или None в случае ошибки
     """
-    input_video_name = input_video.replace(".mp4", "")
-    output_audio = "audio-input.wav"
+    # Получаем имя файла без расширения
+    input_name = os.path.splitext(os.path.basename(input_media))[0]
+    output_audio = f"audio-input-{input_name}.wav"
     processor = AudioPreprocessor()
     
-    print(f"Извлечение аудио из {input_video}...")
+    # Определяем тип файла по расширению
+    file_ext = os.path.splitext(input_media)[1].lower()
+    audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma']
+    is_audio_file = file_ext in audio_extensions
     
-    # Создаем прогресс-бар для процесса извлечения аудио
-    with tqdm(total=0, desc="Извлечение аудио", bar_format='{desc}: {elapsed}') as pbar:
+    if is_audio_file:
+        print(f"[INFO] Обработка аудиофайла {input_media}...")
+    else:
+        print(f"[INFO] Извлечение аудио из {input_media}...")
+    
+    # Создаем прогресс-бар для процесса извлечения/обработки аудио
+    with tqdm(total=0, desc="Обработка медиа", bar_format='{desc}: {elapsed}') as pbar:
         try:
+            # Для аудиофайлов, которые не в формате WAV 16kHz mono, конвертируем их
+            # Для видеофайлов извлекаем аудиодорожку
             (
                 ffmpeg
-                .input(input_video)
+                .input(input_media)
                 .output(output_audio, acodec='pcm_s16le', ac=1, ar='16k')
                 .run(quiet=True, overwrite_output=True)
             )
-            pbar.set_description("Извлечение аудио завершено")
-            print(f"\nАудио успешно извлечено: {output_audio}")
-            output_audio = processor.process(output_audio, visualize=False)
+            
+            if is_audio_file:
+                pbar.set_description("Обработка аудио завершена")
+                print(f"[INFO] Аудио обработано: {output_audio}")
+            else:
+                pbar.set_description("Извлечение аудио завершено")
+                print(f"[INFO] Аудио извлечено: {output_audio}")
+                
+            output_audio = processor.process_audio(output_audio, visualize=False)
             return output_audio
         except ffmpeg.Error as e:
-            pbar.set_description("Ошибка извлечения аудио")
-            print(f"\nОшибка при извлечении аудио: {e.stderr.decode() if hasattr(e, 'stderr') else str(e)}")
+            if is_audio_file:
+                pbar.set_description("Ошибка обработки аудио")
+                print(f"[ОШИБКА] Не удалось обработать аудио: {e.stderr.decode() if hasattr(e, 'stderr') else str(e)}")
+            else:
+                pbar.set_description("Ошибка извлечения аудио")
+                print(f"[ОШИБКА] Не удалось извлечь аудио: {e.stderr.decode() if hasattr(e, 'stderr') else str(e)}")
             return None
         except Exception as e:
-            pbar.set_description("Ошибка обработки аудио")
-            print(f"\nОшибка при обработке аудио: {e}")
+            pbar.set_description("Ошибка обработки медиа")
+            print(f"[ОШИБКА] Не удалось обработать медиафайл: {e}")
             return None
-
-
-def create_csv_file(merged_segments: List[Dict[str, Any]], output_file: str) -> str:
-    """
-    Создает CSV файл из сегментов транскрипции.
-    
-    Args:
-        merged_segments (List[Dict[str, Any]]): Список сегментов с транскрипцией
-        output_file (str): Имя выходного файла
-        
-    Returns:
-        str: Путь к созданному CSV файлу
-    """
-    print(f"Создание CSV файла: {output_file}")
-    
-    # Создаем DataFrame из сегментов
-    df = pd.DataFrame(merged_segments)
-    
-    # Убедимся, что все колонки присутствуют и в правильном порядке
-    columns = ['start', 'end', 'speaker', 'emotion', 'text']
-    for col in columns:
-        if col not in df.columns:
-            df[col] = ""
-    
-    # Переупорядочиваем колонки
-    df = df[columns]
-    
-    # Форматируем временные метки для лучшей читаемости с прогресс-баром
-    with tqdm(total=2, desc="Форматирование данных CSV", unit="шаг") as pbar:
-        df['start'] = df['start'].apply(lambda x: f"{float(x):.2f}")
-        pbar.update(1)
-        
-        df['end'] = df['end'].apply(lambda x: f"{float(x):.2f}")
-        pbar.update(1)
-    
-    # Сохраняем в CSV с правильной кодировкой и обработкой специальных символов
-    with tqdm(total=1, desc="Сохранение CSV файла", unit="файл") as pbar:
-        df.to_csv(output_file, index=False, encoding='utf-8-sig', quoting=1)
-        pbar.update(1)
-    
-    print(f"CSV файл успешно создан: {output_file}")
-    return output_file
 
 
 def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file: str) -> str:
@@ -165,7 +158,17 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
     Returns:
         str: Путь к созданному файлу разговора
     """
-    print(f"Создание файла в формате разговора: {output_file}")
+    # Проверяем существование директории output
+    output_dir = 'output'
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # Получаем только имя файла без пути
+    output_filename = os.path.basename(output_file)
+    # Формируем полный путь в директории output
+    output_path = os.path.join(output_dir, output_filename)
+    
+    print(f"[INFO] Создание файла в формате разговора: {output_path}")
     
     # Создаем маппинг спикеров на буквы (A, B, C...)
     unique_speakers: Set[str] = set(segment['speaker'] for segment in merged_segments)
@@ -175,7 +178,7 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
     combined_segments = []
     current_segment = None
     
-    with tqdm(total=len(merged_segments), desc="Объединение последовательных сегментов", unit="сегмент") as pbar:
+    with tqdm(total=len(merged_segments), desc="Объединение сегментов", unit="сегмент") as pbar:
         for segment in merged_segments:
             # Заменяем SPEAKER_XX на соответствующую букву
             segment['speaker'] = speaker_mapping[segment['speaker']]
@@ -200,10 +203,10 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
     if current_segment is not None:
         combined_segments.append(current_segment)
     
-    # Формируем строки в формате [start - end] Speaker (emotion confidence%): с переносами строк
+    # Формируем строки в формате [start_time - end_time] Speaker (emotion): с переносами строк
     conversation_lines = []
     
-    with tqdm(total=len(combined_segments), desc="Форматирование сегментов разговора", unit="сегмент") as pbar:
+    with tqdm(total=len(combined_segments), desc="Форматирование сегментов", unit="сегмент") as pbar:
         for segment in combined_segments:
             start_time = f"{float(segment['start']):.2f}"
             end_time = f"{float(segment['end']):.2f}"
@@ -239,11 +242,11 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
             pbar.update(1)
     
     # Записываем в файл
-    output_file = output_file.replace('.csv', '.txt')
-    with tqdm(total=1, desc="Сохранение файла разговора", unit="файл") as pbar:
-        with open(output_file, 'w', encoding='utf-8') as f:
+    output_path = output_path.replace('.csv', '.txt')
+    with tqdm(total=1, desc="Сохранение файла", unit="файл") as pbar:
+        with open(output_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(conversation_lines))
         pbar.update(1)
     
-    print(f"Файл разговора успешно создан: {output_file}")
-    return output_file
+    print(f"[INFO] Файл разговора создан: {output_path}")
+    return output_path
