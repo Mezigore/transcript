@@ -10,7 +10,6 @@ from config import FILES, INPUT_DIR, OUTPUT_DIR, OUTPUT_FORMAT
 # Словарь для перевода эмоций с английского на русский
 EMOTION_TRANSLATIONS = FILES['emotion_translations']
 
-
 def find_media_files() -> List[str]:
     """
     Находит все аудио и видео файлы в директории input.
@@ -20,8 +19,10 @@ def find_media_files() -> List[str]:
     """
     # Поддерживаемые форматы видео
     video_extensions = FILES['video_extensions']
+    
     # Поддерживаемые форматы аудио
     audio_extensions = FILES['audio_extensions']
+    
     # Все поддерживаемые форматы
     media_extensions = video_extensions + audio_extensions
     
@@ -29,15 +30,53 @@ def find_media_files() -> List[str]:
     input_dir = INPUT_DIR
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
-        
-    media_files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and 
+    
+    media_files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and
                   any(f.lower().endswith(ext) for ext in media_extensions)]
+    
     return media_files
 
+def check_if_processed(media_path: str) -> bool:
+    """
+    Проверяет, был ли файл уже обработан (есть ли соответствующий выходной файл).
+    
+    Args:
+        media_path (str): Путь к медиа файлу
+        
+    Returns:
+        bool: True, если файл уже обработан, False в противном случае
+    """
+    base_output = os.path.splitext(os.path.basename(media_path))[0]
+    output_conversation = f"{base_output}_transcript.txt"
+    output_path = os.path.join(OUTPUT_DIR, output_conversation)
+    
+    return os.path.exists(output_path)
+
+def select_operation_mode() -> int:
+    """
+    Позволяет пользователю выбрать режим работы программы.
+    
+    Returns:
+        int: 1 - обработка одного файла, 2 - обработка всех файлов
+    """
+    print("\n[МЕНЮ] Выберите режим работы:")
+    print(" 1. Обработать один файл")
+    print(" 2. Обработать все файлы в папке input")
+    
+    try:
+        choice = int(input("[ВВОД] Введите номер выбранного режима (или Enter для режима 1): ") or "1")
+        if choice not in [1, 2]:
+            print("[ПРЕДУПРЕЖДЕНИЕ] Неверный выбор. Используется режим 1.")
+            return 1
+        return choice
+    except ValueError:
+        print("[ПРЕДУПРЕЖДЕНИЕ] Неверный ввод. Используется режим 1.")
+        return 1
 
 def select_media_file() -> Optional[str]:
     """
     Позволяет пользователю выбрать аудио или видео файл из директории input.
+    Отмечает уже обработанные файлы.
     
     Returns:
         Optional[str]: Путь к выбранному файлу или None, если файлы не найдены
@@ -50,12 +89,16 @@ def select_media_file() -> Optional[str]:
     
     if len(media_files) == 1:
         selected_file = media_files[0]
-        print(f"[INFO] Найден медиа файл: {selected_file}")
+        is_processed = check_if_processed(os.path.join(INPUT_DIR, selected_file))
+        status = " [обработан]" if is_processed else ""
+        print(f"[INFO] Найден медиа файл: {selected_file}{status}")
     else:
         print("[INFO] Найдено несколько медиа файлов:")
         for i, file in enumerate(media_files, 1):
-            print(f"  {i}. {file}")
-        
+            is_processed = check_if_processed(os.path.join(INPUT_DIR, file))
+            status = " [обработан]" if is_processed else ""
+            print(f" {i}. {file}{status}")
+            
         try:
             choice = int(input("[ВВОД] Выберите номер файла (или Enter для первого файла): ") or "1")
             if 1 <= choice <= len(media_files):
@@ -70,7 +113,6 @@ def select_media_file() -> Optional[str]:
     # Возвращаем полный путь к файлу
     return os.path.join(INPUT_DIR, selected_file)
 
-
 def extract_and_process_audio(input_media: str) -> Optional[str]:
     """
     Извлекает аудио из видеофайла или обрабатывает аудиофайл напрямую.
@@ -84,6 +126,7 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
     # Получаем имя файла без расширения
     input_name = os.path.splitext(os.path.basename(input_media))[0]
     output_audio = f"audio-input-{input_name}.wav"
+    
     processor = AudioPreprocessor()
     
     # Определяем тип файла по расширению
@@ -101,12 +144,11 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
         try:
             # Для аудиофайлов, которые не в формате WAV 16kHz mono, конвертируем их
             # Для видеофайлов извлекаем аудиодорожку
-            (
-                ffmpeg
-                .input(input_media)
-                .output(output_audio, acodec='pcm_s16le', ac=1, ar='16k')
+            
+            ffmpeg\
+                .input(input_media)\
+                .output(output_audio, acodec='pcm_s16le', ac=1, ar='16k')\
                 .run(quiet=True, overwrite_output=True)
-            )
             
             if is_audio_file:
                 pbar.set_description("Обработка аудио завершена")
@@ -114,7 +156,7 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
             else:
                 pbar.set_description("Извлечение аудио завершено")
                 print(f"[INFO] Аудио извлечено: {output_audio}")
-                
+            
             # Обработка аудио
             processed_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False)
             
@@ -124,6 +166,7 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
                 print(f"[INFO] Удален временный файл: {output_audio}")
             
             return processed_audio
+            
         except ffmpeg.Error as e:
             if is_audio_file:
                 pbar.set_description("Ошибка обработки аудио")
@@ -136,7 +179,6 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
             pbar.set_description("Ошибка обработки медиа")
             print(f"[ОШИБКА] Не удалось обработать медиафайл: {e}")
             return None
-
 
 def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file: str, max_line_length: int = 100) -> str:
     """
@@ -170,4 +212,5 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
         f.write(formatted_text)
     
     print(f"[INFO] Файл в формате разговора создан: {output_path}")
+    
     return output_path
