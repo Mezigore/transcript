@@ -4,7 +4,7 @@ import ffmpeg
 import textwrap
 from typing import List, Dict, Any, Optional, Set
 from tqdm import tqdm
-from preprocessor import AudioPreprocessor
+from src.preprocessor import AudioPreprocessor
 from config import FILES, INPUT_DIR, OUTPUT_DIR, OUTPUT_FORMAT
 
 # Словарь для перевода эмоций с английского на русский
@@ -115,8 +115,15 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
                 pbar.set_description("Извлечение аудио завершено")
                 print(f"[INFO] Аудио извлечено: {output_audio}")
                 
-            output_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False)
-            return output_audio
+            # Обработка аудио
+            processed_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False)
+            
+            # Удаляем временный файл после обработки
+            if os.path.exists(output_audio):
+                os.remove(output_audio)
+                print(f"[INFO] Удален временный файл: {output_audio}")
+            
+            return processed_audio
         except ffmpeg.Error as e:
             if is_audio_file:
                 pbar.set_description("Ошибка обработки аудио")
@@ -131,106 +138,36 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
             return None
 
 
-def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file: str) -> str:
+def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file: str, max_line_length: int = 100) -> str:
     """
-    Создает файл в формате разговора (conversation format) из сегментов транскрипции.
-    Формат: [start_time - end_time] Speaker (emotion): text
+    Создает файл в формате разговора с учетом приоритетов разделения блоков.
+    Формат: время - говорящий - эмоция и процент уверенности - текст
     
     Args:
         merged_segments (List[Dict[str, Any]]): Список сегментов с транскрипцией
         output_file (str): Имя выходного файла
+        max_line_length (int): Максимальная длина строки для переноса текста
         
     Returns:
         str: Путь к созданному файлу разговора
     """
-    # Проверяем существование директории output
     output_dir = OUTPUT_DIR
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
-    # Получаем только имя файла без пути
     output_filename = os.path.basename(output_file)
-    # Формируем полный путь в директории output
     output_path = os.path.join(output_dir, output_filename)
     
     print(f"[INFO] Создание файла в формате разговора: {output_path}")
     
-    # Создаем маппинг спикеров на буквы (A, B, C...)
-    unique_speakers: Set[str] = set(segment['speaker'] for segment in merged_segments)
-    speaker_mapping = {speaker: chr(65 + i) for i, speaker in enumerate(sorted(list(unique_speakers)))}
+    # Сортируем сегменты по времени начала
+    sorted_segments = sorted(merged_segments, key=lambda x: x['start'])
     
-    # Объединяем последовательные сегменты с одинаковым спикером и эмоцией
-    combined_segments = []
-    current_segment = None
-    
-    with tqdm(total=len(merged_segments), desc="Объединение сегментов", unit="сегмент") as pbar:
-        for segment in merged_segments:
-            # Заменяем SPEAKER_XX на соответствующую букву
-            segment['speaker'] = speaker_mapping[segment['speaker']]
-            
-            if current_segment is None:
-                current_segment = segment.copy()
-            elif (segment['speaker'] == current_segment['speaker'] and 
-                  segment.get('emotion', 'unknown') == current_segment.get('emotion', 'unknown')):
-                # Объединяем сегменты с тем же спикером и эмоцией
-                current_segment['end'] = segment['end']
-                current_segment['text'] += " " + segment['text']
-                # Если есть уверенность в эмоции, берем среднее значение
-                if 'emotion_confidence' in segment and 'emotion_confidence' in current_segment:
-                    current_segment['emotion_confidence'] = (current_segment['emotion_confidence'] + segment['emotion_confidence']) / 2
-            else:
-                combined_segments.append(current_segment)
-                current_segment = segment.copy()
-            
-            pbar.update(1)
-    
-    # Добавляем последний сегмент
-    if current_segment is not None:
-        combined_segments.append(current_segment)
-    
-    # Записываем результаты в файл
     with open(output_path, 'w', encoding='utf-8') as f:
-        for segment in combined_segments:
-            start_time = segment['start']
-            end_time = segment['end']
-            speaker = segment['speaker']
-            text = segment['text']
-            emotion = segment.get('emotion', 'unknown')
-            emotion_confidence = segment.get('emotion_confidence', 0.0)
-            
-            # Переводим эмоцию с английского на русский, если есть перевод
-            if emotion in EMOTION_TRANSLATIONS:
-                emotion = EMOTION_TRANSLATIONS[emotion]
-            
-            # Форматируем строку в зависимости от настроек
-            if OUTPUT_FORMAT['include_emotions'] and emotion_confidence >= OUTPUT_FORMAT['min_confidence_threshold']:
-                if OUTPUT_FORMAT['include_confidence']:
-                    line = f"[{start_time:.2f} - {end_time:.2f}] {speaker} ({emotion}, {emotion_confidence:.1f}%): {text}"
-                else:
-                    line = f"[{start_time:.2f} - {end_time:.2f}] {speaker} ({emotion}): {text}"
-            else:
-                line = f"[{start_time:.2f} - {end_time:.2f}] {speaker}: {text}"
-            
-            # Если текст длинный, разбиваем его на несколько строк с отступами
-            if len(line) > OUTPUT_FORMAT['wrap_width']:
-                wrapped_lines = textwrap.wrap(text, width=OUTPUT_FORMAT['wrap_width'] - 30)  # Учитываем длину префикса
-                # Первая строка с полным префиксом
-                if OUTPUT_FORMAT['include_emotions'] and emotion_confidence >= OUTPUT_FORMAT['min_confidence_threshold']:
-                    if OUTPUT_FORMAT['include_confidence']:
-                        f.write(f"[{start_time:.2f} - {end_time:.2f}] {speaker} ({emotion}, {emotion_confidence:.1f}%): {wrapped_lines[0]}\n")
-                    else:
-                        f.write(f"[{start_time:.2f} - {end_time:.2f}] {speaker} ({emotion}): {wrapped_lines[0]}\n")
-                else:
-                    f.write(f"[{start_time:.2f} - {end_time:.2f}] {speaker}: {wrapped_lines[0]}\n")
-                
-                # Остальные строки с отступами
-                for wrapped_line in wrapped_lines[1:]:
-                    f.write(f"{'':>30}{wrapped_line}\n")
-            else:
-                f.write(f"{line}\n")
-            
-            # Добавляем пустую строку между сегментами для лучшей читаемости
-            f.write("\n")
+        # Используем format_transcript для форматирования с переносом строк
+        from src.combine import format_transcript
+        formatted_text = format_transcript(sorted_segments, max_line_length=max_line_length)
+        f.write(formatted_text)
     
     print(f"[INFO] Файл в формате разговора создан: {output_path}")
     return output_path

@@ -6,5 +6,15 @@ __pycache__/preprocessor.cpython-311.pyc
 .DS_Store
 *.wav
 *.mp4
+*.webm
+*.mov
+*.mkv
+*.ogg
+*.flac
+*.aac
+*.m4a
+*.wma
 *.csv
 *.txt
+*.pyc
+*.DS_Store

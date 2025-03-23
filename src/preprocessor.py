@@ -146,13 +146,145 @@ class AudioPreprocessor:
         
         # Подавление шума с помощью библиотеки noisereduce
         try:
+            nr_strength = AUDIO_PREPROCESSOR['noise_reduction']['nr_strength']
             if noise_clip is not None:
-                return nr.reduce_noise(y=audio, y_noise=noise_clip, sr=self.target_sr)
+                return nr.reduce_noise(y=audio, y_noise=noise_clip, sr=self.target_sr, prop_decrease=nr_strength)
             else:
-                return nr.reduce_noise(y=audio, sr=self.target_sr)
+                return nr.reduce_noise(y=audio, sr=self.target_sr, prop_decrease=nr_strength)
         except Exception as e:
             print(f"[ОШИБКА] Не удалось подавить шум: {e}")
             return audio
+    
+    def apply_echo_reduction(self, audio: np.ndarray) -> np.ndarray:
+        """
+        Уменьшение эха в записях онлайн-встреч (Zoom, Google Meet)
+        
+        Args:
+            audio (np.ndarray): Аудиоданные
+            
+        Returns:
+            np.ndarray: Аудио с уменьшенным эхом
+        """
+        print("[INFO] Применение алгоритма уменьшения эха")
+        try:
+            # Применяем FFT для перехода в частотную область
+            fft_size = 2048
+            hop_length = 512
+            
+            # Получаем спектрограмму
+            stft = librosa.stft(audio, n_fft=fft_size, hop_length=hop_length)
+            magnitude, phase = librosa.magphase(stft)
+            
+            # Подавляем эхо путем уменьшения амплитуды в определенных частотных диапазонах
+            # Типичные частоты эха в онлайн-конференциях: 300-3000 Гц
+            freq_bins = librosa.fft_frequencies(sr=self.target_sr, n_fft=fft_size)
+            echo_mask = np.ones_like(magnitude)
+            
+            # Находим индексы частотных бинов, соответствующие диапазону эха
+            echo_range = (300, 3000)
+            echo_indices = np.where((freq_bins >= echo_range[0]) & (freq_bins <= echo_range[1]))[0]
+            
+            # Применяем маску подавления к этим частотам
+            echo_mask[echo_indices, :] = 0.7  # Уменьшаем на 30%
+            
+            # Применяем маску
+            magnitude_processed = magnitude * echo_mask
+            
+            # Восстанавливаем сигнал
+            stft_processed = magnitude_processed * phase
+            audio_processed = librosa.istft(stft_processed, hop_length=hop_length)
+            
+            # Обрезаем до исходной длины
+            if len(audio_processed) > len(audio):
+                audio_processed = audio_processed[:len(audio)]
+            elif len(audio_processed) < len(audio):
+                audio_processed = np.pad(audio_processed, (0, len(audio) - len(audio_processed)))
+            
+            return audio_processed
+        except Exception as e:
+            print(f"[ОШИБКА] Не удалось применить уменьшение эха: {e}")
+            return audio
+    
+    def enhance_voice(self, audio: np.ndarray) -> np.ndarray:
+        """
+        Улучшение разборчивости речи для записей онлайн-встреч
+        
+        Args:
+            audio (np.ndarray): Аудиоданные
+            
+        Returns:
+            np.ndarray: Аудио с улучшенной разборчивостью речи
+        """
+        print("[INFO] Улучшение разборчивости речи")
+        try:
+            # Применяем эквализацию для улучшения разборчивости речи
+            # Усиливаем частоты в диапазоне 1000-4000 Гц (диапазон разборчивости речи)
+            fft_size = 2048
+            hop_length = 512
+            
+            # Получаем спектрограмму
+            stft = librosa.stft(audio, n_fft=fft_size, hop_length=hop_length)
+            magnitude, phase = librosa.magphase(stft)
+            
+            # Создаем маску усиления для частот разборчивости речи
+            freq_bins = librosa.fft_frequencies(sr=self.target_sr, n_fft=fft_size)
+            voice_mask = np.ones_like(magnitude)
+            
+            # Находим индексы частотных бинов для диапазона разборчивости речи
+            voice_range = (1000, 4000)
+            voice_indices = np.where((freq_bins >= voice_range[0]) & (freq_bins <= voice_range[1]))[0]
+            
+            # Усиливаем эти частоты
+            voice_mask[voice_indices, :] = 1.3  # Усиливаем на 30%
+            
+            # Применяем маску
+            magnitude_processed = magnitude * voice_mask
+            
+            # Восстанавливаем сигнал
+            stft_processed = magnitude_processed * phase
+            audio_processed = librosa.istft(stft_processed, hop_length=hop_length)
+            
+            # Обрезаем до исходной длины
+            if len(audio_processed) > len(audio):
+                audio_processed = audio_processed[:len(audio)]
+            elif len(audio_processed) < len(audio):
+                audio_processed = np.pad(audio_processed, (0, len(audio) - len(audio_processed)))
+            
+            return audio_processed
+        except Exception as e:
+            print(f"[ОШИБКА] Не удалось улучшить разборчивость речи: {e}")
+            return audio
+    
+    def apply_zoom_meet_optimizations(self, audio: np.ndarray) -> np.ndarray:
+        """
+        Применение специальных оптимизаций для записей Zoom и Google Meet
+        
+        Args:
+            audio (np.ndarray): Аудиоданные
+            
+        Returns:
+            np.ndarray: Оптимизированное аудио
+        """
+        print("[INFO] Применение оптимизаций для Zoom/Google Meet")
+        
+        # Проверяем, включены ли оптимизации в конфиге
+        if not AUDIO_PREPROCESSOR.get('zoom_meet_optimization', {}).get('enabled', False):
+            return audio
+        
+        # Применяем оптимизации в определенном порядке
+        if AUDIO_PREPROCESSOR.get('zoom_meet_optimization', {}).get('background_noise_suppression', False):
+            # Усиленное подавление фонового шума для онлайн-встреч
+            audio = self.reduce_noise(audio, noise_clip=None)
+        
+        if AUDIO_PREPROCESSOR.get('zoom_meet_optimization', {}).get('echo_reduction', False):
+            # Уменьшение эха
+            audio = self.apply_echo_reduction(audio)
+        
+        if AUDIO_PREPROCESSOR.get('zoom_meet_optimization', {}).get('voice_enhancement', False):
+            # Улучшение разборчивости речи
+            audio = self.enhance_voice(audio)
+        
+        return audio
     
     def trim_long_silences(self, audio: np.ndarray, frame_length: int = 1024, 
                           hop_length: int = 256, threshold: float = 0.05) -> np.ndarray:
@@ -263,6 +395,9 @@ class AudioPreprocessor:
         if noise_reduction:
             audio = self.reduce_noise(audio)
         
+        # Применение специальных оптимизаций для Zoom/Google Meet
+        audio = self.apply_zoom_meet_optimizations(audio)
+        
         # Удаление тишины
         if remove_silence_flag:
             audio = self.remove_silence(audio)
@@ -271,153 +406,18 @@ class AudioPreprocessor:
         if normalize:
             audio = self.normalize_audio(audio)
         
-        # Визуализация обработанного аудио
-        if visualize:
-            self.visualize_audio(audio, sr, "Обработанное аудио")
-        
         # Сохранение обработанного аудио
-        print(f"[INFO] Сохранение обработанного аудио: {output_path}")
-        sf.write(output_path, audio, sr)
-        
-        return output_path
-    
-    def segment_audio(self, audio: np.ndarray, segment_length_ms: int = 1000) -> List[np.ndarray]:
-        """
-        Разделение аудио на сегменты фиксированной длины
-        
-        Args:
-            audio (np.ndarray): Аудиоданные
-            segment_length_ms (int): Длина сегмента в миллисекундах
-            
-        Returns:
-            List[np.ndarray]: Список сегментов аудио
-        """
-        # Вычисление длины сегмента в сэмплах
-        segment_length = int(self.target_sr * segment_length_ms / 1000)
-        
-        # Разделение аудио на сегменты
-        segments = []
-        for i in range(0, len(audio), segment_length):
-            segment = audio[i:i+segment_length]
-            # Если последний сегмент короче, дополняем его тишиной
-            if len(segment) < segment_length:
-                segment = np.pad(segment, (0, segment_length - len(segment)))
-            segments.append(segment)
-        
-        print(f"[INFO] Аудио разделено на {len(segments)} сегментов по {segment_length_ms} мс")
-        return segments
-    
-    def apply_vad(self, audio: np.ndarray, frame_duration_ms: int = 30, 
-                 aggressiveness: int = 3) -> np.ndarray:
-        """
-        Применение Voice Activity Detection (VAD)
-        
-        Args:
-            audio (np.ndarray): Аудиоданные
-            frame_duration_ms (int): Длительность фрейма в миллисекундах
-            aggressiveness (int): Агрессивность VAD (0-3)
-            
-        Returns:
-            np.ndarray: Маска VAD (1 - речь, 0 - тишина)
-        """
         try:
-            import webrtcvad
-        except ImportError:
-            print("[ПРЕДУПРЕЖДЕНИЕ] webrtcvad не установлен. Установите его с помощью 'pip install webrtcvad'")
-            return np.ones(len(audio))
-        
-        vad = webrtcvad.Vad(aggressiveness)
-        
-        # Преобразование аудио в формат, подходящий для VAD
-        frame_length = int(self.target_sr * frame_duration_ms / 1000)
-        frames = []
-        for i in range(0, len(audio), frame_length):
-            frame = audio[i:i+frame_length]
-            if len(frame) < frame_length:
-                frame = np.pad(frame, (0, frame_length - len(frame)))
-            frames.append(frame)
-        
-        # Применение VAD к каждому фрейму
-        vad_mask = np.zeros(len(frames))
-        for i, frame in enumerate(frames):
-            # Преобразование в формат int16
-            frame_int16 = (frame * 32767).astype(np.int16).tobytes()
-            try:
-                vad_mask[i] = vad.is_speech(frame_int16, self.target_sr)
-            except:
-                vad_mask[i] = 1  # В случае ошибки считаем, что это речь
-        
-        # Расширение маски до размера аудио
-        vad_mask_expanded = np.repeat(vad_mask, frame_length)
-        if len(vad_mask_expanded) > len(audio):
-            vad_mask_expanded = vad_mask_expanded[:len(audio)]
-        elif len(vad_mask_expanded) < len(audio):
-            vad_mask_expanded = np.pad(vad_mask_expanded, (0, len(audio) - len(vad_mask_expanded)))
-        
-        print(f"[INFO] Применен VAD, обнаружено {np.sum(vad_mask)} фреймов с речью из {len(vad_mask)}")
-        return vad_mask_expanded
-    
-    def apply_spectral_subtraction(self, audio: np.ndarray, 
-                                  noise_clip: Optional[np.ndarray] = None,
-                                  frame_length: int = 2048,
-                                  hop_length: int = 512,
-                                  alpha: float = 2.0) -> np.ndarray:
-        """
-        Спектральное вычитание для подавления шума
-        
-        Returns:
-            np.ndarray: Аудио с подавленным шумом
-        """
-        print("[INFO] Применение спектрального вычитания")
-        
-        # Если образец шума не предоставлен, используем первую секунду аудио
-        if noise_clip is None and len(audio) > self.target_sr:
-            noise_clip = audio[:self.target_sr]
-        elif noise_clip is None:
-            print("[ПРЕДУПРЕЖДЕНИЕ] Не предоставлен образец шума и аудио слишком короткое")
-            return audio
-        
-        # Параметры для STFT
-        n_fft = frame_length
-        
-        # STFT для шума
-        noise_stft = librosa.stft(noise_clip, n_fft=n_fft, hop_length=hop_length)
-        noise_power = np.mean(np.abs(noise_stft)**2, axis=1)
-        
-        # STFT для аудио
-        audio_stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
-        audio_power = np.abs(audio_stft)**2
-        audio_phase = np.angle(audio_stft)
-        
-        # Спектральное вычитание
-        power_diff = audio_power - alpha * noise_power[:, np.newaxis]
-        power_diff = np.maximum(power_diff, 0.01 * audio_power)  # Спектральный пол
-        
-        # Восстановление сигнала
-        audio_stft_denoised = np.sqrt(power_diff) * np.exp(1j * audio_phase)
-        audio_denoised = librosa.istft(audio_stft_denoised, hop_length=hop_length, length=len(audio))
-        
-        return audio_denoised
-
-
-# Пример использования
-if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1:
-        input_file = sys.argv[1]
-        output_file = sys.argv[2] if len(sys.argv) > 2 else None
-        
-        if os.path.exists(input_file):
-            preprocessor = AudioPreprocessor(target_sr=16000, mono=True)
-            output_file = preprocessor.process_audio(
-                input_file,
-                output_path=output_file,
-                highpass_filter=True,
-                noise_reduction=True,
-                remove_silence_flag=True,
-                normalize=True
-            )
-            print(f"[INFO] Обработанный файл сохранен как: {output_file}")
-        else:
-            print(f"[ОШИБКА] Файл {input_file} не найден. Укажите путь к существующему аудиофайлу.")
+            sf.write(output_path, audio, sr)
+            print(f"[INFO] Сохранено обработанное аудио: {output_path}")
+            
+            # Визуализация обработанного аудио
+            if visualize:
+                self.visualize_audio(audio, sr, "Обработанное аудио")
+            
+            return output_path
+        except Exception as e:
+            print(f"[ОШИБКА] Не удалось сохранить аудио: {e}")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+            raise
