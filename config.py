@@ -30,7 +30,7 @@ TRANSCRIPTION = {
 DIARIZATION = {
     'model_path': "pyannote/speaker-diarization-3.1",  # Путь к модели диаризации
     'segment_size': 30.0,  # Соответствует размеру сегмента для транскрипции
-    'min_speakers': 1,  # Минимальное количество спикеров
+    'min_speakers': 2,  # Минимальное количество спикеров
     'max_speakers': 3,  # Оптимизировано для типичных онлайн-встреч
     'num_speakers': None,
     'diarization_params': {

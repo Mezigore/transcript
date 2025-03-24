@@ -1,6 +1,7 @@
 import torch
 import torchaudio
 from transformers import AutoTokenizer, AutoFeatureExtractor, Trainer, TrainingArguments
+from torch.utils.data import Dataset
 import os
 import importlib.util
 import sys
@@ -76,11 +77,12 @@ class EmotionDataset(Dataset):
             return_tensors="pt"
         )
         
+        # Convert all attention masks to float type for consistency
         return {
             "input_values": audio_inputs["input_values"].squeeze(),
-            "audio_attention_mask": audio_inputs["attention_mask"].squeeze().float(),
+            "audio_attention_mask": audio_inputs["attention_mask"].squeeze().float(),  # Changed to float
             "input_ids": text_inputs["input_ids"].squeeze(),
-            "text_attention_mask": text_inputs["attention_mask"].squeeze().bool(),
+            "text_attention_mask": text_inputs["attention_mask"].squeeze().float(),    # Changed to float
             "token_type_ids": text_inputs["token_type_ids"].squeeze() if "token_type_ids" in text_inputs else None
         }
 
@@ -114,7 +116,7 @@ class EmotionRecognizer:
             output_dir="./tmp_trainer",
             per_device_eval_batch_size=1,
             remove_unused_columns=False,
-            no_cuda=(self.device != 'cuda'),
+            use_cpu=(self.device != 'cuda'),  # Changed from no_cuda to use_cpu
             fp16=self.use_fp16
         )
         

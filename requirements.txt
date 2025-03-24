@@ -1,5 +1,4 @@
 torch
-aniemore
 pyannote.audio
 ffmpeg-python
 numpy
@@ -11,3 +10,4 @@ soundfile
 librosa
 matplotlib
 tqdm
+accelerate
