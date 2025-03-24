@@ -157,8 +157,8 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
                 pbar.set_description("Извлечение аудио завершено")
                 print(f"[INFO] Аудио извлечено: {output_audio}")
             
-            # Обработка аудио
-            processed_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False)
+            # Обработка аудио с флагом очистки
+            processed_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False, cleanup=True)
             
             # Удаляем временный файл после обработки
             if os.path.exists(output_audio):

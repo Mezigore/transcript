@@ -67,7 +67,13 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     execution_times['file_creation'] = time.time() - file_creation_start
     
     # Cleanup
-    if os.path.exists(audio_path):
+    # Check if audio_path is a tuple (path, cleanup_flag)
+    if isinstance(audio_path, tuple) and len(audio_path) == 2:
+        audio_file, cleanup_flag = audio_path
+        if cleanup_flag and os.path.exists(audio_file):
+            os.remove(audio_file)
+            print(f"[INFO] Удален обработанный аудиофайл: {audio_file}")
+    elif os.path.exists(audio_path):
         os.remove(audio_path)
     
     if os.path.exists(TEMP_DIR):

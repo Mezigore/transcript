@@ -338,7 +338,7 @@ class AudioPreprocessor:
     def process_audio(self, file_path: str, output_path: str = None, 
                      remove_silence_flag: bool = None, highpass_filter: bool = None,
                      noise_reduction: bool = None, normalize: bool = None,
-                     visualize: bool = None) -> str:
+                     visualize: bool = None, cleanup: bool = False) -> str:
         """
         Комплексная обработка аудиофайла
         
@@ -350,6 +350,7 @@ class AudioPreprocessor:
             noise_reduction (bool, optional): Применять ли подавление шума
             normalize (bool, optional): Применять ли нормализацию
             visualize (bool, optional): Визуализировать ли аудио
+            cleanup (bool, optional): Удалять ли обработанный файл после использования
             
         Returns:
             str: Путь к обработанному аудиофайлу
@@ -414,6 +415,12 @@ class AudioPreprocessor:
             # Визуализация обработанного аудио
             if visualize:
                 self.visualize_audio(audio, sr, "Обработанное аудио")
+            
+            # Регистрируем файл для очистки, если требуется
+            if cleanup:
+                print(f"[INFO] Файл {output_path} будет удален после использования")
+                # Возвращаем кортеж с путем и флагом очистки
+                return output_path, cleanup
             
             return output_path
         except Exception as e:
