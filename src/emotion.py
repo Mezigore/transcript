@@ -1,78 +1,94 @@
 import torch
-from aniemore.recognizers.multimodal import VoiceTextRecognizer
-from aniemore.models import HuggingFaceModel
-from config import  FILES, TRANSCRIPTION
+from src.emo_recognizer import EmotionRecognizer
+from config import FILES, TRANSCRIPTION
 from src.chunking import chunking_audio
 import mlx_whisper
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
+import soundfile as sf
+import tempfile
+import os
+import shutil
 
-def analyze_emotions(audio_path: str):
-    model = HuggingFaceModel.MultiModal.WavLMBertFusion
+def analyze_emotions(audio_path):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    vt_recognizer = VoiceTextRecognizer(model=model, device=device)
-    
+    # Разделяем аудио на фрагменты
     chunked_audios, sample_rate = chunking_audio(audio_path, max_segment_length=TRANSCRIPTION['segment_size'])
+    print(f"[DEBUG] Created {len(list(chunked_audios))} audio segments")
     
-    print("[INFO] Анализ эмоций в аудио...")
+    # === ЭТАП 1: Транскрипция всех сегментов ===
+    print("[INFO] Начало транскрипции аудио...")
     
-    emotion_text_segments = []
-    prompt = TRANSCRIPTION['initial_prompt']
-    
-    # Создаем временную директорию для сегментов
-    import tempfile
-    import os
+    # Подготавливаем все сегменты
+    segment_files = []
     temp_dir = tempfile.mkdtemp()
     
     try:
-        # Обрабатываем каждый сегмент аудио
-        for audio_data, start_time in chunked_audios:
-            # Создаем временный файл для сегмента
-            segment_file = os.path.join(temp_dir, f"segment_{start_time:.2f}.wav")
-            
-            # Сохраняем аудио данные во временный файл
-            import soundfile as sf
+        # Сохраняем сегменты на диск
+        for idx, (audio_data, start_time) in enumerate(chunked_audios):
+            segment_file = os.path.join(temp_dir, f"segment_{idx:04d}_{start_time:.2f}.wav")
             sf.write(segment_file, audio_data, sample_rate)
-            
-            # Получаем транскрипцию с помощью Whisper
-            transcription_result = mlx_whisper.transcribe(
-                segment_file, 
-                path_or_hf_repo=TRANSCRIPTION['model_path'], 
+            segment_files.append((segment_file, start_time))
+        
+        # Транскрибируем все сегменты
+        all_transcriptions = []
+        prompt = TRANSCRIPTION['initial_prompt']
+        
+        for segment_file, start_time in tqdm(segment_files, desc="Транскрипция сегментов"):
+            result = mlx_whisper.transcribe(
+                segment_file,
+                path_or_hf_repo=TRANSCRIPTION['model_path'],
                 initial_prompt=prompt,
                 condition_on_previous_text=True,
                 **TRANSCRIPTION['decode_options']
             )
-            transcription = transcription_result['text']
             
-            # Распознаем эмоции, передавая пару аудио-текст
-            emotions = vt_recognizer.recognize((segment_file, transcription))
-            
-            # Обрабатываем сегменты из транскрипции
-            for segment in transcription_result['segments']:
-                # Определяем эмоцию для этого сегмента
-                emotion_name = vt_recognizer._get_single_label(emotions)
-                
-                # Получаем уверенность для определенной эмоции
-                emotion_confidence = emotions.get(emotion_name.lower(), 0.0) * 100  # Переводим в проценты
-                
-                # Преобразуем эмоцию в соответствии с маппингом из конфигурации
-                emotion_name = FILES['emotion_translations'].get(emotion_name.lower(), emotion_name)
-                
-                # Корректируем временные метки с учетом начала сегмента
-                segment_start = float(segment['start']) + start_time
-                segment_end = float(segment['end']) + start_time
-                
-                emotion_text_segments.append({
-                    'start': segment_start,
-                    'end': segment_end,
-                    'text': segment['text'],
-                    'emotion': emotion_name,
-                    'confidence': emotion_confidence
+            # Сохраняем результаты транскрипции с информацией о времени начала
+            for segment in result['segments']:
+                all_transcriptions.append({
+                    'file': segment_file,
+                    'start': float(segment['start']) + start_time,
+                    'end': float(segment['end']) + start_time,
+                    'text': segment['text']
                 })
-    
+        
+        # Очищаем память от модели транскрипции
+        import gc
+        gc.collect()
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+        
+        # === ЭТАП 2: Анализ эмоций ===
+        print("[INFO] Начало анализа эмоций...")
+        
+        # Инициализируем модель распознавания эмоций
+        emotion_recognizer = EmotionRecognizer(device=device)
+        
+        # Обрабатываем эмоции в многопоточном режиме
+        def process_segment_emotion(segment):
+            emotions = emotion_recognizer.recognize(segment['file'], segment['text'])
+            emotion_name = max(emotions.items(), key=lambda x: x[1])[0]
+            emotion_confidence = emotions[emotion_name] * 100
+            emotion_name = FILES['emotion_translations'].get(emotion_name.lower(), emotion_name)
+            
+            return {
+                'start': segment['start'],
+                'end': segment['end'],
+                'text': segment['text'],
+                'emotion': emotion_name,
+                'confidence': emotion_confidence
+            }
+        
+        # Обработка в пуле потоков с правильным отображением прогресса
+        emotion_text_segments = []
+        with ThreadPoolExecutor(max_workers=min(8, len(all_transcriptions))) as executor:
+            futures = [executor.submit(process_segment_emotion, segment) for segment in all_transcriptions]
+            for future in tqdm(futures, total=len(futures), desc="Анализ эмоций"):
+                emotion_text_segments.append(future.result())
+        
+        print(f"[INFO] Найдено {len(emotion_text_segments)} сегментов с эмоциями")
+        return emotion_text_segments
+        
     finally:
-        # Удаляем временные файлы
-        import shutil
+        # Очистка временных файлов
         shutil.rmtree(temp_dir)
-    
-    print(f"[INFO] Найдено {len(emotion_text_segments)} сегментов с эмоциями")
-    return emotion_text_segments

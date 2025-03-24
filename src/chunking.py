@@ -61,9 +61,27 @@ def chunking_audio(audio_path: str, min_segment_length: float = 5.0, max_segment
     # Создаем список кортежей (аудио_данные, начальное_время)
     segments = []
     for chunk, ts in zip(speech_chunks, speech_timestamps):
-        # Преобразуем тензор в numpy массив
         audio_data = chunk.numpy()
         start_time = ts['start'] / 1000  # Преобразуем из миллисекунд в секунды
-        segments.append((audio_data, start_time))
+        duration = audio_data.shape[0] / sample_rate
+        
+        # Если длительность больше максимальной, разделяем на подсегменты
+        if duration > max_segment_length:
+            samples_per_segment = int(max_segment_length * sample_rate)
+            num_segments = int(np.ceil(audio_data.shape[0] / samples_per_segment))
+            
+            for i in range(num_segments):
+                segment_start = i * samples_per_segment
+                segment_end = min((i + 1) * samples_per_segment, audio_data.shape[0])
+                segment_data = audio_data[segment_start:segment_end]
+                
+                # Добавляем только если длина сегмента достаточная
+                if segment_data.shape[0] / sample_rate >= min_segment_length:
+                    segment_start_time = start_time + (segment_start / sample_rate)
+                    segments.append((segment_data, segment_start_time))
+        else:
+            # Если длительность в пределах нормы, добавляем как есть
+            if duration >= min_segment_length:
+                segments.append((audio_data, start_time))
     
     return segments, sample_rate
