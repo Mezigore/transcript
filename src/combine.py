@@ -1,4 +1,6 @@
 # Функция для объединения результатов транскрипции и диаризации
+from config import OUTPUT_FORMAT
+
 def get_friendly_speaker_name(speaker_label):
     """Convert technical speaker label (e.g., SPEAKER_00) to a more friendly name (e.g., Speaker 1)"""
     try:
@@ -77,7 +79,7 @@ def merge_transcription_with_diarization(diarized_segments, text_and_emotion_seg
         if best_match_diarized:
             speaker = get_friendly_speaker_name(best_match_diarized["speaker"])
             # Add debug logging
-            print(f"[DEBUG] Found speaker {speaker} for segment [{whisper_start:.2f}-{whisper_end:.2f}] with overlap {max_overlap:.2f}")
+            # print(f"[DEBUG] Found speaker {speaker} for segment [{whisper_start:.2f}-{whisper_end:.2f}] with overlap {max_overlap:.2f}")
         else:
             # Log a warning if no speaker is found
             print(f"[WARNING] No speaker found for segment [{whisper_start:.2f}-{whisper_end:.2f}]")
@@ -89,8 +91,13 @@ def merge_transcription_with_diarization(diarized_segments, text_and_emotion_seg
                 raise ValueError(f"No speaker found for first segment [{whisper_start:.2f}-{whisper_end:.2f}]")
         
         # Извлекаем эмоцию и уверенность из whisper_segment
-        emotion = whisper_segment.get("emotion", "нейтральный")
+        emotion = whisper_segment.get("emotion", "")
         emotion_confidence = whisper_segment.get("confidence", 0.0)
+        
+        # Проверяем порог уверенности для эмоции
+        if emotion_confidence < OUTPUT_FORMAT['min_confidence_threshold']:
+            emotion = ""
+            emotion_confidence = 0.0
         
         # Если это первый сегмент
         if temp_segment is None:

@@ -1,11 +1,13 @@
 import torch
-import torchaudio
 from transformers import AutoTokenizer, AutoFeatureExtractor, Trainer, TrainingArguments
 from torch.utils.data import Dataset
 import os
 import importlib.util
 import sys
 import logging
+from typing import List, Dict
+from contextlib import nullcontext
+
 
 # Настраиваем логирование с меньшей детализацией для производительности
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,26 +47,22 @@ def load_custom_model(model_name):
     return model
 
 class EmotionDataset(Dataset):
-    def __init__(self, audio_text_pairs, processor, feature_extractor):
+    def __init__(self, audio_text_pairs, processor, feature_extractor, sampling_rate: int):
         self.pairs = audio_text_pairs
         self.processor = processor
         self.feature_extractor = feature_extractor
+        self.sampling_rate = sampling_rate
     
     def __len__(self):
         return len(self.pairs)
     
     def __getitem__(self, idx):
-        audio_path, text = self.pairs[idx]
-        
-        # Process audio
-        speech_array, sampling_rate = torchaudio.load(audio_path)
-        resampler = torchaudio.transforms.Resample(sampling_rate, self.feature_extractor.sampling_rate)
-        speech = resampler(speech_array).squeeze().numpy()
+        audio, text = self.pairs[idx]
         
         # Prepare inputs
         audio_inputs = self.feature_extractor(
-            speech,
-            sampling_rate=self.feature_extractor.sampling_rate,
+            audio,
+            sampling_rate=self.sampling_rate,
             return_tensors="pt",
             padding=True
         )
@@ -107,41 +105,44 @@ class EmotionRecognizer:
         
         self.model.eval()
     
-    def batch_recognize(self, audio_text_pairs):
-        # Create dataset
-        dataset = EmotionDataset(audio_text_pairs, self.tokenizer, self.feature_extractor)
-        
-        # Configure trainer
-        training_args = TrainingArguments(
-            output_dir="./tmp_trainer",
-            per_device_eval_batch_size=1,
-            remove_unused_columns=False,
-            use_cpu=(self.device != 'cuda'),  # Changed from no_cuda to use_cpu
-            fp16=self.use_fp16
-        )
-        
-        trainer = Trainer(
-            model=self.model,
-            args=training_args,
-        )
-        
-        # Get predictions
-        predictions = trainer.predict(dataset)
-        probs = torch.softmax(torch.tensor(predictions.predictions), dim=1)
-        
-        # Process results
-        results = []
-        available_labels = {int(k): v for k, v in self.model.config.id2label.items()}
-        
-        for prob in probs:
-            result = {}
-            for i, p in enumerate(prob.numpy()):
-                if i in available_labels:
-                    label = available_labels[i]
-                    result[label] = float(p)
-            results.append(result)
-        
-        return results
+    def batch_recognize(self, audio_text_pairs, sample_rate: int, use_fp16: bool = False, device: str = 'cpu', batch_size: int = 1) -> List[Dict]:
+        with torch.no_grad():
+            dataset = EmotionDataset(
+                audio_text_pairs, 
+                self.tokenizer, 
+                self.feature_extractor, 
+                sample_rate
+            )
+            
+            dataloader = torch.utils.data.DataLoader(
+                dataset, 
+                batch_size=batch_size,
+                shuffle=False
+            )
+            
+            results = []
+            for batch in dataloader:
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                
+                with torch.cuda.amp.autocast('cuda') if self.use_fp16 else nullcontext():
+                    outputs = self.model(**batch)
+                
+                probs = torch.softmax(outputs.logits, dim=1)
+                
+                for prob in probs:
+                    result = {}
+                    for i, p in enumerate(prob.cpu().numpy()):
+                        if i in self.model.config.id2label:
+                            label = self.model.config.id2label[i]
+                            result[label] = float(p)
+                    results.append(result)
+                
+                del batch
+                del outputs
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
+            return results
 
     def recognize(self, audio_path, text):
         """Single sample recognition"""

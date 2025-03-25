@@ -1,14 +1,9 @@
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-from tqdm import tqdm
-import ffmpeg
-import os
 import tempfile
-import numpy as np
 import torchaudio
 import torch
 from config import DIARIZATION, API_KEYS
-from src.chunking import chunking_audio
 
 
 # Функция для диаризации с помощью Pyannote

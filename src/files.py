@@ -1,11 +1,8 @@
 import os
-import pandas as pd
 import ffmpeg
-import textwrap
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional
 from tqdm import tqdm
-from src.preprocessor import AudioPreprocessor
-from config import FILES, INPUT_DIR, OUTPUT_DIR, OUTPUT_FORMAT
+from config import FILES, INPUT_DIR, OUTPUT_DIR
 
 # Словарь для перевода эмоций с английского на русский
 EMOTION_TRANSLATIONS = FILES['emotion_translations']
@@ -17,16 +14,10 @@ def find_media_files() -> List[str]:
     Returns:
         List[str]: Список имен аудио и видео файлов
     """
-    # Поддерживаемые форматы видео
     video_extensions = FILES['video_extensions']
-    
-    # Поддерживаемые форматы аудио
     audio_extensions = FILES['audio_extensions']
-    
-    # Все поддерживаемые форматы
     media_extensions = video_extensions + audio_extensions
     
-    # Проверяем существование директории input
     input_dir = INPUT_DIR
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
@@ -110,7 +101,6 @@ def select_media_file() -> Optional[str]:
             print("[ПРЕДУПРЕЖДЕНИЕ] Неверный ввод. Используется первый файл.")
             selected_file = media_files[0]
     
-    # Возвращаем полный путь к файлу
     return os.path.join(INPUT_DIR, selected_file)
 
 def extract_and_process_audio(input_media: str) -> Optional[str]:
@@ -123,13 +113,9 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
     Returns:
         Optional[str]: Путь к обработанному аудиофайлу или None в случае ошибки
     """
-    # Получаем имя файла без расширения
     input_name = os.path.splitext(os.path.basename(input_media))[0]
     output_audio = f"audio-input-{input_name}.wav"
     
-    processor = AudioPreprocessor()
-    
-    # Определяем тип файла по расширению
     file_ext = os.path.splitext(input_media)[1].lower()
     audio_extensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma']
     is_audio_file = file_ext in audio_extensions
@@ -139,12 +125,8 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
     else:
         print(f"[INFO] Извлечение аудио из {input_media}...")
     
-    # Создаем прогресс-бар для процесса извлечения/обработки аудио
     with tqdm(total=0, desc="Обработка медиа", bar_format='{desc}: {elapsed}') as pbar:
         try:
-            # Для аудиофайлов, которые не в формате WAV 16kHz mono, конвертируем их
-            # Для видеофайлов извлекаем аудиодорожку
-            
             ffmpeg\
                 .input(input_media)\
                 .output(output_audio, acodec='pcm_s16le', ac=1, ar='16k')\
@@ -152,20 +134,12 @@ def extract_and_process_audio(input_media: str) -> Optional[str]:
             
             if is_audio_file:
                 pbar.set_description("Обработка аудио завершена")
-                print(f"[INFO] Аудио обработано: {output_audio}")
             else:
                 pbar.set_description("Извлечение аудио завершено")
-                print(f"[INFO] Аудио извлечено: {output_audio}")
             
-            # Обработка аудио с флагом очистки
-            processed_audio = processor.process_audio(output_audio, remove_silence_flag=False, highpass_filter=True, noise_reduction=False, normalize=True, visualize=False, cleanup=True)
+            print(f"[INFO] Аудио {'обработано' if is_audio_file else 'извлечено'}: {output_audio}")
             
-            # Удаляем временный файл после обработки
-            if os.path.exists(output_audio):
-                os.remove(output_audio)
-                print(f"[INFO] Удален временный файл: {output_audio}")
-            
-            return processed_audio
+            return output_audio
             
         except ffmpeg.Error as e:
             if is_audio_file:
@@ -202,11 +176,9 @@ def create_conversation_file(merged_segments: List[Dict[str, Any]], output_file:
     
     print(f"[INFO] Создание файла в формате разговора: {output_path}")
     
-    # Сортируем сегменты по времени начала
     sorted_segments = sorted(merged_segments, key=lambda x: x['start'])
     
     with open(output_path, 'w', encoding='utf-8') as f:
-        # Используем format_transcript для форматирования с переносом строк
         from src.combine import format_transcript
         formatted_text = format_transcript(sorted_segments, max_line_length=max_line_length)
         f.write(formatted_text)
