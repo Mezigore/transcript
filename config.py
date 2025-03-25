@@ -102,6 +102,7 @@ OUTPUT_FORMAT = {
     'conversation_format': True,  # Использовать формат разговора
     'wrap_width': 100,  # Ширина строки для переноса текста
     'include_emotions': True,  # Включать эмоции в вывод
-    'include_confidence': True,  # Включать уверенность в вывод
-    'min_confidence_threshold': 80.0  # Минимальный порог уверенности для отображения эмоции (в процентах)
+    'include_confidence': True,  # Включать уверенность в выводе
+    'include_timestamps': False,  # Включать временные метки в выводе
+    'min_confidence_threshold': 0.5  # Минимальный порог уверенности для эмоций
 }
