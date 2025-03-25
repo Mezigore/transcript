@@ -7,7 +7,7 @@ import sys
 import logging
 from typing import List, Dict
 from contextlib import nullcontext
-
+import tqdm
 
 # Настраиваем логирование с меньшей детализацией для производительности
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -121,26 +121,28 @@ class EmotionRecognizer:
             )
             
             results = []
-            for batch in dataloader:
-                batch = {k: v.to(self.device) for k, v in batch.items()}
-                
-                with torch.cuda.amp.autocast('cuda') if self.use_fp16 else nullcontext():
-                    outputs = self.model(**batch)
-                
-                probs = torch.softmax(outputs.logits, dim=1)
-                
-                for prob in probs:
-                    result = {}
-                    for i, p in enumerate(prob.cpu().numpy()):
-                        if i in self.model.config.id2label:
-                            label = self.model.config.id2label[i]
-                            result[label] = float(p)
-                    results.append(result)
-                
-                del batch
-                del outputs
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+            with tqdm.tqdm(total=len(dataloader), desc="Анализ эмоций") as pbar:
+                for batch in dataloader:
+                    batch = {k: v.to(self.device) for k, v in batch.items()}
+                    
+                    with torch.cuda.amp.autocast('cuda') if self.use_fp16 else nullcontext():
+                        outputs = self.model(**batch)
+                    
+                    probs = torch.softmax(outputs.logits, dim=1)
+                    
+                    for prob in probs:
+                        result = {}
+                        for i, p in enumerate(prob.cpu().numpy()):
+                            if i in self.model.config.id2label:
+                                label = self.model.config.id2label[i]
+                                result[label] = float(p)
+                        results.append(result)
+                    
+                    pbar.update(1)
+                    del batch
+                    del outputs
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             
             return results
 

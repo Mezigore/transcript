@@ -96,8 +96,8 @@ def merge_transcription_with_diarization(diarized_segments, text_and_emotion_seg
         
         # Проверяем порог уверенности для эмоции
         if emotion_confidence < OUTPUT_FORMAT['min_confidence_threshold']:
-            emotion = ""
-            emotion_confidence = 0.0
+            emotion = None  
+            emotion_confidence = None
         
         # Если это первый сегмент
         if temp_segment is None:
@@ -130,6 +130,8 @@ def merge_transcription_with_diarization(diarized_segments, text_and_emotion_seg
             
             # Форматируем заголовок и текст отдельно
             header = f"[{start_time} - {end_time}] {temp_segment['speaker']} ({temp_segment['emotion']}, {avg_confidence:.1f}%):"
+            if temp_segment['emotion'] is None:
+                header = f"[{start_time} - {end_time}] {temp_segment['speaker']}:"
             formatted_text = format_segment_text(temp_segment['text'], max_line_length=max_line_length)
             formatted_segment = f"{header}\n{formatted_text}"
             
@@ -162,6 +164,8 @@ def merge_transcription_with_diarization(diarized_segments, text_and_emotion_seg
         
         # Форматируем заголовок и текст отдельно
         header = f"[{start_time} - {end_time}] {temp_segment['speaker']} ({temp_segment['emotion']}, {avg_confidence:.1f}%):"
+        if temp_segment['emotion'] is None:
+            header = f"[{start_time} - {end_time}] {temp_segment['speaker']}:"
         formatted_text = format_segment_text(temp_segment['text'], max_line_length=max_line_length)
         formatted_segment = f"{header}\n{formatted_text}"
         

@@ -1,13 +1,19 @@
 import os
 import shutil
-import time  # Add this import
+import time  
 from src.files import *
-from src.transcribe import transcribe_audio  # Updated import
+from src.transcribe import transcribe_audio  
 from src.diarization import diarize
 from src.emotion import analyze_emotions
 from config import API_KEYS, TEMP_DIR
 from src.combine import merge_transcription_with_diarization
 from typing import Dict, Union
+
+def format_time(seconds: float) -> str:
+    """Форматирует время в минуты и секунды."""
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes}м {seconds}с"
 
 def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[str, Union[bool, str]]:
     start_time = time.time()
@@ -24,7 +30,7 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     audio_start = time.time()
     audio_result = extract_and_process_audio(media_path)
     audio_path = audio_result
-    execution_times['audio_extraction'] = time.time() - audio_start
+    execution_times['audio_extraction'] = format_time(time.time() - audio_start)
     
     if audio_path is None:
         return {"success": False, "error": "[ОШИБКА] Не удалось извлечь аудио"}
@@ -33,7 +39,7 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     try:
         transcription_start = time.time()
         transcription_segments = transcribe_audio(audio_path)
-        execution_times['transcription'] = time.time() - transcription_start
+        execution_times['transcription'] = format_time(time.time() - transcription_start)
     except Exception as e:
         return {"success": False, "error": f"[ОШИБКА] Транскрипция не удалась: {str(e)}"}
     
@@ -41,7 +47,7 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     try:
         diar_start = time.time()
         diarized_segments = diarize(audio_path, hf_token)
-        execution_times['diarization'] = time.time() - diar_start
+        execution_times['diarization'] = format_time(time.time() - diar_start)
     except Exception as e:
         return {"success": False, "error": f"[ОШИБКА] Диаризация не удалась: {str(e)}"}
     
@@ -49,14 +55,14 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     try:
         emotion_start = time.time()
         text_and_emotion_segments = analyze_emotions(audio_path, transcription_segments)
-        execution_times['emotion_analysis'] = time.time() - emotion_start
+        execution_times['emotion_analysis'] = format_time(time.time() - emotion_start)
     except Exception as e:
         return {"success": False, "error": f"[ОШИБКА] Анализ эмоций не удался: {str(e)}"}
     
     # Merging results timing
     merge_start = time.time()
     merged_segments = merge_transcription_with_diarization(diarized_segments, text_and_emotion_segments, max_line_length=100)
-    execution_times['merging'] = time.time() - merge_start
+    execution_times['merging'] = format_time(time.time() - merge_start)
     
     # File creation timing
     base_output = os.path.splitext(os.path.basename(media_path))[0]
@@ -64,7 +70,7 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
     
     file_creation_start = time.time()
     conversation_file = create_conversation_file(merged_segments, output_conversation, max_line_length=100)
-    execution_times['file_creation'] = time.time() - file_creation_start
+    execution_times['file_creation'] = format_time(time.time() - file_creation_start)
     
     # Cleanup
     # Check if audio_path is a tuple (path, cleanup_flag)
@@ -80,7 +86,7 @@ def process_media(media_path: str, hf_token: Union[str, None] = None) -> Dict[st
         shutil.rmtree(TEMP_DIR)
     
     total_time = time.time() - start_time
-    execution_times['total'] = total_time
+    execution_times['total'] = format_time(total_time)
     
     return {
         "success": True, 
@@ -117,13 +123,13 @@ if __name__ == "__main__":
             print(f"[INFO] Обработка завершена. Результат сохранен в: {result['file_path']}")
             print(f"[INFO] Полный путь: {os.path.abspath(str(result['file_path']))}")
             print("\n[INFO] Время выполнения операций:")
-            print(f" - Извлечение аудио: {result['execution_times']['audio_extraction']:.2f} сек")
-            print(f" - Транскрипция: {result['execution_times']['transcription']:.2f} сек")
-            print(f" - Диаризация: {result['execution_times']['diarization']:.2f} сек")
-            print(f" - Анализ эмоций: {result['execution_times']['emotion_analysis']:.2f} сек")
-            print(f" - Объединение результатов: {result['execution_times']['merging']:.2f} сек")
-            print(f" - Создание файла: {result['execution_times']['file_creation']:.2f} сек")
-            print(f" - Общее время: {result['execution_times']['total']:.2f} сек")
+            print(f" - Извлечение аудио: {result['execution_times']['audio_extraction']}")
+            print(f" - Транскрипция: {result['execution_times']['transcription']}")
+            print(f" - Диаризация: {result['execution_times']['diarization']}")
+            print(f" - Анализ эмоций: {result['execution_times']['emotion_analysis']}")
+            print(f" - Объединение результатов: {result['execution_times']['merging']}")
+            print(f" - Создание файла: {result['execution_times']['file_creation']}")
+            print(f" - Общее время: {result['execution_times']['total']}")
         else:
             print(f"[ОШИБКА] Ошибка обработки медиафайла: {result['error']}")
     
@@ -171,13 +177,13 @@ if __name__ == "__main__":
                 print(f"[INFO] Обработка завершена. Результат сохранен в: {result['file_path']}")
                 print(f"[INFO] Полный путь: {os.path.abspath(str(result['file_path']))}")
                 print("\n[INFO] Время выполнения операций:")
-                print(f" - Извлечение аудио: {result['execution_times']['audio_extraction']:.2f} сек")
-                print(f" - Транскрипция: {result['execution_times']['transcription']:.2f} сек")
-                print(f" - Диаризация: {result['execution_times']['diarization']:.2f} сек")
-                print(f" - Анализ эмоций: {result['execution_times']['emotion_analysis']:.2f} сек")
-                print(f" - Объединение результатов: {result['execution_times']['merging']:.2f} сек")
-                print(f" - Создание файла: {result['execution_times']['file_creation']:.2f} сек")
-                print(f" - Общее время: {result['execution_times']['total']:.2f} сек")
+                print(f" - Извлечение аудио: {result['execution_times']['audio_extraction']}")
+                print(f" - Транскрипция: {result['execution_times']['transcription']}")
+                print(f" - Диаризация: {result['execution_times']['diarization']}")
+                print(f" - Анализ эмоций: {result['execution_times']['emotion_analysis']}")
+                print(f" - Объединение результатов: {result['execution_times']['merging']}")
+                print(f" - Создание файла: {result['execution_times']['file_creation']}")
+                print(f" - Общее время: {result['execution_times']['total']}")
                 processed_count += 1
             else:
                 print(f"[ОШИБКА] Ошибка обработки медиафайла: {result['error']}")
