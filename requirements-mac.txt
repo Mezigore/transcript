@@ -1,5 +1,4 @@
-openai-whisper
-
+mlx-whisper
 transformers
 pyannote.audio
 ffmpeg-python

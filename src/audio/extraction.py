@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-def extract_audio(input_media: str, output_path: Optional[str] = None) -> Tuple[Tensor, int]:
+def extract_audio(input_media: str, output_path: Optional[str] = None) -> Tuple[Tensor, int, Optional[str]]:
     """Извлечение аудио из медиа-файла напрямую в память.
     
     Args:
@@ -30,7 +30,7 @@ def extract_audio(input_media: str, output_path: Optional[str] = None) -> Tuple[
         
         # Преобразуем в тензор PyTorch
         audio_array = np.frombuffer(audio_data, np.float32)
-        audio_tensor = torch.from_numpy(audio_array).unsqueeze(0)
+        audio_tensor = torch.from_numpy(audio_array.copy()).unsqueeze(0)
         
         # Сохраняем результат только если указан output_path
         if output_path:
@@ -40,9 +40,12 @@ def extract_audio(input_media: str, output_path: Optional[str] = None) -> Tuple[
                 os.makedirs(output_dir)
             
             # Сохраняем в файл
-            torch.save(audio_tensor, output_path)
+            try:
+                torch.save(audio_tensor, output_path)
+            except Exception as e:
+                raise RuntimeError(f"Ошибка при сохранении аудио в файл: {str(e)}")
         
-        return audio_tensor, 16000  # Фиксированная частота дискретизации
+        return audio_tensor, 16000, output_path  # Фиксированная частота дискретизации
         
     except ffmpeg.Error as e:
         raise RuntimeError(f"Ошибка FFmpeg при извлечении аудио: {e.stderr.decode()}")

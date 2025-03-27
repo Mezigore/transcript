@@ -1,6 +1,6 @@
 from typing import Optional, List
 import os
-from src.utils.file_manager import find_media_files, check_if_processed
+from src.utils.filesystem import find_media_files, check_if_processed
 from config import INPUT_DIR
 
 def select_operation_mode() -> int:
@@ -61,11 +61,13 @@ def print_processing_result(result, file_name: str):
         for stage, time in result.execution_times.items():
             print(f" - {stage}: {time}")
     else:
-        print(f"[ОШИБКА] Ошибка обработки: {result.error}")
+        print(f"[ОШИБКА] Не удалось обработать файл {file_name}")
+        print(f"Причина: {result.error}")
 
 def print_batch_statistics(total: int, processed: int, skipped: int, errors: int):
     """Выводит статистику пакетной обработки"""
-    print(f"\n[ИТОГ] Обработано файлов: {total}")
-    print(f" - Успешно: {processed}")
+    print("\n[ИТОГ] Обработка завершена:")
+    print(f" - Всего файлов: {total}")
+    print(f" - Успешно обработано: {processed}")
     print(f" - Пропущено: {skipped}")
     print(f" - Ошибок: {errors}")

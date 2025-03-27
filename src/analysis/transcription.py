@@ -15,8 +15,8 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
                 raise ImportError("Пакет mlx_whisper необходим для macOS, но не установлен")
             
             try:
-                result = mlx_whisper.transcribe(
-                    audio_tensor,
+                result: Dict[str, Any] = mlx_whisper.transcribe(
+                    audio_tensor.numpy(),
                     path_or_hf_repo=TRANSCRIPTION['model_path_mlx'],
                     initial_prompt=TRANSCRIPTION['initial_prompt'],
                     condition_on_previous_text=True,

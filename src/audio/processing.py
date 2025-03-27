@@ -6,7 +6,7 @@ from torch import Tensor
 import torchaudio
 import numpy as np
 
-def process_audio(input_audio: str, output_path: Optional[str] = None) -> Tuple[Tensor, int]:
+def process_audio(input_audio: str , output_path: Optional[str] = None) -> Tuple[Tensor, int]:
     """Обработка аудио для улучшения качества распознавания речи.
     
     Применяет: удаление тишины, фильтрацию, нормализацию и другие улучшения.
@@ -21,16 +21,17 @@ def process_audio(input_audio: str, output_path: Optional[str] = None) -> Tuple[
     try:
         # Читаем аудио напрямую в numpy массив
         audio_data, _ = (
-            ffmpeg
-            .input(input_audio)
-            .output('pipe:', 
-                   format='f32le',
-                   acodec='pcm_f32le',
-                   ac=1,
-                   ar='16k',
-                   af='silenceremove=start_periods=1:stop_periods=-1:start_threshold=-50dB:stop_threshold=-50dB:start_silence=1:start_duration=0:stop_duration=3:detection=peak,highpass=200,lowpass=3000,afftdn,volume=12dB,dynaudnorm')
-            .run(capture_stdout=True, quiet=True)
-        )
+                ffmpeg
+                .input(input_audio)
+                .output('pipe:', 
+                    format='f32le',
+                    acodec='pcm_f32le',
+                    ac=1,
+                    ar='16k',
+                    af='silenceremove=start_periods=1:stop_periods=-1:start_threshold=-50dB:stop_threshold=-50dB:start_silence=1:start_duration=0:stop_duration=3:detection=peak,highpass=200,lowpass=3000,afftdn,volume=12dB,dynaudnorm')
+                .run(capture_stdout=True, quiet=True)
+                )
+        
         
         # Преобразуем в тензор PyTorch
         audio_array = np.frombuffer(audio_data, np.float32)
@@ -54,7 +55,7 @@ def process_audio(input_audio: str, output_path: Optional[str] = None) -> Tuple[
     except Exception as e:
         raise RuntimeError(f"Ошибка при обработке аудио: {str(e)}")
 
-def extract_and_process_audio(input_media: str) -> Tuple[Tensor, int]:
+def extract_and_process_audio(input_media: str, output_path: Optional[str] = None) -> Tuple[Tensor, int]:
     """Извлечение и обработка аудио из медиа-файла.
     
     Объединяет функции извлечения и обработки аудио в один удобный метод.
@@ -67,5 +68,8 @@ def extract_and_process_audio(input_media: str) -> Tuple[Tensor, int]:
     """
     from .extraction import extract_audio
     
-    extracted_path, _ = extract_audio(input_media)
-    return process_audio(extracted_path) 
+    _, _, output_path = extract_audio(input_media, output_path)
+    if output_path:
+        return process_audio(output_path) 
+    else:
+        raise RuntimeError("Не удалось получить путь к извлеченному аудио")

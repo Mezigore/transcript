@@ -1,8 +1,4 @@
-__pycache__/progress.cpython-311.pyc
-__pycache__/diarization.cpython-311.pyc
-__pycache__/emotion.cpython-311.pyc
-__pycache__/files.cpython-311.pyc
-__pycache__/preprocessor.cpython-311.pyc
+__pycache__
 .DS_Store
 *.wav
 *.mp4
@@ -15,7 +11,7 @@ __pycache__/preprocessor.cpython-311.pyc
 *.m4a
 *.wma
 *.csv
-*.txt
 *.pyc
 *.DS_Store
 _old
+output

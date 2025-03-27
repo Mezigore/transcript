@@ -1,7 +1,7 @@
 import torch
 import torchaudio
 import logging
-from src.pipelines.emo_recognizer import EmotionRecognizer
+from src.analysis.emo_recognizer import EmotionRecognizer
 from config import FILES
 from typing import List, Dict
 

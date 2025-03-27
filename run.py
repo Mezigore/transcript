@@ -1,14 +1,14 @@
 import os
-import time
+from typing import Optional
 from config import API_KEYS, INPUT_DIR
 from src.utils.filesystem import find_media_files, check_if_processed, cleanup_temp_files
-from src.pipelines.media_processor import MediaProcessor, ProcessingResult
-from src.cli.cli_ui import (
+from src.cli.cli import (
     select_operation_mode,
     select_media_file,
     print_processing_result,
     print_batch_statistics
 )
+from src.pipelines.audio_processing_pipeline import AudioProcessingPipeline, ProcessingResult
 
 def format_time(seconds: float) -> str:
     """Форматирует время в минуты и секунды."""
@@ -16,8 +16,8 @@ def format_time(seconds: float) -> str:
     seconds = int(seconds % 60)
     return f"{minutes}м {seconds}с"
 
-def process_media(media_path: str, hf_token: str = None) -> ProcessingResult:
-    processor = MediaProcessor(hf_token or API_KEYS['huggingface'])
+def process_media(media_path: str, hf_token: Optional[str] = None) -> ProcessingResult:
+    processor = AudioProcessingPipeline(hf_token or API_KEYS['huggingface'])
     return processor.process(media_path)
 
 def handle_single_file():
