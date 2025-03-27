@@ -18,18 +18,6 @@ def analyze_emotions(audio_file: torch.Tensor, sample_rate: int, transcription_s
     if len(audio_file.shape) == 1:
         audio_file = audio_file.unsqueeze(0)  # Add channel dimension
     
-    # Downsample very long audio files to reduce memory usage
-    max_audio_length = 1_000_000  # Adjust as needed
-    if audio_file.shape[1] > max_audio_length:
-        new_sample_rate = sample_rate // 2
-        # Исправлена скобка в конце вызова функции
-        audio_file = torchaudio.functional.resample(
-            audio_file,
-            orig_freq=sample_rate,
-            new_freq=new_sample_rate
-        )  
-        sample_rate = new_sample_rate
-        logger.info(f"Downsampled audio to {new_sample_rate} Hz")
     
     # Combine short segments
     combined_segments = []

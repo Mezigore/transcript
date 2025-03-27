@@ -1,3 +1,4 @@
+from config import TEMP_DIR, OUTPUT_DIR
 import os
 import time
 from dataclasses import dataclass, field
@@ -50,7 +51,7 @@ class AudioProcessingPipeline:
     @timed_execution('audio_extraction')
     def _extract_audio(self, media_path: str) -> Tuple[Tensor, int]:
         """Извлечение и обработка аудио."""
-        audio_tensor, sample_rate = extract_and_process_audio(media_path)
+        audio_tensor, sample_rate = extract_and_process_audio(media_path, output_path=TEMP_DIR + "_temp_audio.wav")
         # Дополнительная обработка VAD для удаления тишины
         filtered_tensor = vad_filter(audio_tensor, sample_rate)
         return filtered_tensor, sample_rate
@@ -96,9 +97,12 @@ class AudioProcessingPipeline:
     def _create_output_file(self, merged_segments: List[Dict[str, Any]], media_path: str) -> str:
         """Создание файла с результатами транскрипции."""
         base_output = os.path.splitext(os.path.basename(media_path))[0]
-        output_path = f"{base_output}_transcript.txt"
-        return format_transcript(merged_segments, 100)
-
+        output_path = f"{OUTPUT_DIR}/{base_output}_transcript.txt"
+        text = format_transcript(merged_segments, 100)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(text)
+        return output_path
+    
     def process(self, media_path: str, skip_emotion_analysis: bool = False) -> ProcessingResult:
         """Обработка медиа-файла через полный пайплайн.
         
@@ -129,7 +133,7 @@ class AudioProcessingPipeline:
             
             merged = self._merge_results(diarization, emotions)
             output_path = self._create_output_file(merged, media_path)
-
+            print(f"[INFO] Результаты транскрипции сохранены в {output_path}")
             # Добавляем общее время выполнения
             self.execution_times['Общее время'] = format_time(time.time() - start_time)
 

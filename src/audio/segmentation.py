@@ -51,8 +51,6 @@ def vad_filter(input_tensor: Tensor, sample_rate: int, aggressiveness: int = 3) 
     """
     import webrtcvad
     import struct
-    import io
-    import wave
     
     vad = webrtcvad.Vad(aggressiveness)
     

@@ -5,7 +5,7 @@ from config import DIARIZATION, API_KEYS
 
 
 # Функция для диаризации с помощью Pyannote
-def diarize(audio_file, sample_rate, hf_token=None):
+def diarize(audio_tensor: torch.Tensor, sample_rate: int, hf_token=None):
     # Если токен не передан, используем из конфигурации
     if hf_token is None:
         hf_token = API_KEYS['huggingface']
@@ -30,7 +30,7 @@ def diarize(audio_file, sample_rate, hf_token=None):
     try:
         with ProgressHook() as hook:
             # Get the raw diarization results
-            diarization_results = pipeline({"waveform": audio_file, "sample_rate": sample_rate}, 
+            diarization_results = pipeline({"waveform": audio_tensor.to(torch.float32), "sample_rate": sample_rate}, 
                                           min_speakers=DIARIZATION['min_speakers'], 
                                           max_speakers=DIARIZATION['max_speakers'],
                                           num_speakers=DIARIZATION['num_speakers'],

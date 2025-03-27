@@ -123,24 +123,12 @@ class EmotionDataset(Dataset):
 class EmotionRecognizer:
     def __init__(self, model_name="aniemore/wavlm-bert-fusion-s-emotion-russian-resd", device=None):
         # Определение устройства с приоритетом CPU для избежания проблем с памятью
-        self.device = torch.device("cpu") if device == "cpu" or not torch.cuda.is_available() else torch.device("cuda")
+        self.device = torch.device("cpu")
         
         # Инициализация токенизатора и моделей
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_name)
         self.model = load_custom_model(model_name)
-        
-        # Безопасная квантизация
-        if self.device.type == "cpu":
-            try:
-                self.model = torch.quantization.quantize_dynamic(
-                    self.model,
-                    {torch.nn.Linear, torch.nn.Conv1d},
-                    dtype=torch.qint8
-                )
-                logger.info("Модель успешно квантизирована")
-            except Exception as e:
-                logger.warning(f"Ошибка квантизации: {e}")
         
         # Перенос модели на устройство
         self.model = self.model.to(self.device)
@@ -218,10 +206,11 @@ class EmotionRecognizer:
         if isinstance(audio_path, str) and os.path.isfile(audio_path):
             # Если передан путь к файлу
             waveform, sr = torchaudio.load(audio_path)
-            audio = waveform
+            audio = waveform.to(torch.float32)
+        elif isinstance(audio_path, torch.Tensor):
+            audio = audio_path.to(torch.float32)
         else:
-            # Если передан тензор или массив
-            audio = audio_path
+            raise TypeError("audio_path must be a tensor or a valid file path")
             
         # Используйте переменную или константу вместо хардкодированного значения
         sample_rate = 16000  # или получать из конфигурации
