@@ -18,3 +18,4 @@ __pycache__/preprocessor.cpython-311.pyc
 *.txt
 *.pyc
 *.DS_Store
+_old

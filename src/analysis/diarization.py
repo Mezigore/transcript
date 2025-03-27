@@ -1,43 +1,31 @@
 from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
-import tempfile
-import torchaudio
 import torch
 from config import DIARIZATION, API_KEYS
 
 
 # Функция для диаризации с помощью Pyannote
-def diarize(audio_path, hf_token=None):
+def diarize(audio_file, sample_rate, hf_token=None):
     # Если токен не передан, используем из конфигурации
     if hf_token is None:
         hf_token = API_KEYS['huggingface']
         
     print("[INFO] Начало диаризации аудио...")
     
-    # Получаем информацию о длительности аудио файла
-    # probe = ffmpeg.probe(audio_path)
-    # duration = float(probe['format']['duration'])
-    # print(f"[INFO] Длительность аудио: {duration:.2f} сек")
-    
-    # Размер сегмента в секундах
-    segment_size = DIARIZATION['segment_size']
-    
-    # Создаем временную директорию для сегментов
-    temp_dir = tempfile.mkdtemp()
-    
-    # Разбиваем аудио на сегменты
-    # print("[INFO] Разбиение аудио на сегменты...")
-    # segment_files, sample_rate = chunking_audio(audio_path, max_segment_length=segment_size)
-    
     # Загружаем модель диаризации один раз
     print("[INFO] Загрузка модели диаризации...")
     pipeline = Pipeline.from_pretrained(DIARIZATION['model_path'], use_auth_token=hf_token)
-    pipeline.to(torch.device("mps"))
+    if torch.cuda.is_available():
+        pipeline.to(torch.device("cuda"))
+    elif torch.backends.mps.is_available():
+        pipeline.to(torch.device("mps"))
+    else:
+        pipeline.to(torch.device("cpu"))
     
     # # Диаризация каждого сегмента
     # print("[INFO] Выполнение диаризации...")
     all_speaker_segments = []
-    audio_file, sample_rate = torchaudio.load(audio_path)
+    
     
     try:
         with ProgressHook() as hook:
