@@ -1,6 +1,0 @@
----
-description: 
-globs: 
-alwaysApply: true
----
-- Для кода на Python всегда используй строгую типизацию
