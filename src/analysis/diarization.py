@@ -2,6 +2,7 @@ from pyannote.audio import Pipeline
 from pyannote.audio.pipelines.utils.hook import ProgressHook
 import torch
 from config import DIARIZATION, API_KEYS
+import re
 
 
 # Функция для диаризации с помощью Pyannote
@@ -38,7 +39,16 @@ def diarize(audio_tensor: torch.Tensor, sample_rate: int, hf_token=None):
                                       )
             
             # Process the results into a list of segments
+            speaker_counter = {}
             for turn, _, speaker in diarization_results.itertracks(yield_label=True):
+                # Проверяем формат имени спикера
+                if not re.match(r'SPEAKER_\d+', speaker):
+                    # Преобразуем имя спикера в формат SPEAKER_XX
+                    if speaker not in speaker_counter:
+                        speaker_counter[speaker] = len(speaker_counter)
+                    speaker_idx = speaker_counter[speaker]
+                    speaker = f"SPEAKER_{speaker_idx:02d}"
+                
                 all_speaker_segments.append({
                     "start": turn.start,
                     "end": turn.end,

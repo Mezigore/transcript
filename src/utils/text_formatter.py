@@ -6,6 +6,10 @@ def get_friendly_speaker_name(speaker_label):
     """Преобразует метку спикера в более дружественное имя"""
     try:
         number = int(speaker_label.split('_')[-1])
+        # SPEAKER_00 -> 0 + 1 = "1 Спикер"
+        # SPEAKER_01 -> 1 + 1 = "2 Спикер"
+        # Сохраняем для отладки исходный идентификатор
+        print(f"[DEBUG] Преобразование спикера: {speaker_label} -> {number + 1} Спикер")
         return f"{number + 1} Спикер"
     except:
         return speaker_label
@@ -39,13 +43,53 @@ def format_segment_with_metadata(segment: Dict[str, Any], max_line_length=None) 
     
     return f"{header}\n{formatted_text}"
 
-def format_transcript(merged_segments: List[Dict[str, Any]], max_line_length=None) -> str:
-    """Форматирует объединенные сегменты в текст"""
-    formatted_segments = []
+def format_time(seconds: float) -> str:
+    """Форматирование времени в формат MM:SS."""
+    minutes = int(seconds // 60)
+    seconds = int(seconds % 60)
+    return f"{minutes:02d}:{seconds:02d}"
+
+def format_transcript(segments: List[Dict], confidence_threshold: float = 100) -> str:
+    """Форматирование транскрипции в текстовый формат."""
+    # Используем порог из конфигурации вместо жестко заданного значения
+    use_threshold = OUTPUT_FORMAT.get('min_confidence_threshold', 0.5) * 100
     
-    for segment in sorted(merged_segments, key=lambda x: x['start']):
-        if 'formatted' not in segment:
-            segment['formatted'] = format_segment_with_metadata(segment, max_line_length)
-        formatted_segments.append(segment['formatted'])
+    formatted_text = []
     
-    return "\n\n".join(formatted_segments) 
+    for segment in segments:
+        # Форматирование времени
+        start_time = format_time(segment['start'])
+        end_time = format_time(segment['end'])
+        
+        # Получаем информацию о спикере
+        speaker = get_friendly_speaker_name(segment.get('speaker', 'Unknown'))
+        
+        # Форматирование текста с эмоциями
+        text = segment.get('text', '').strip()
+        if not text:
+            continue  # Пропускаем пустые сегменты
+            
+        emotion_info = ""
+        # Проверяем наличие эмоций и форматируем их в зависимости от модели
+        if OUTPUT_FORMAT.get('include_emotions', True):  # Проверяем, включены ли эмоции в вывод
+            # Проверяем тип эмоций (старый формат для wavlm или новый A,D,V для wav2vec)
+            if 'emotion' in segment:
+                # Формат для модели wavlm с одной эмоцией
+                emotion = segment['emotion']
+                confidence = segment.get('confidence', 0)
+                if confidence >= use_threshold:  # Используем порог из конфигурации
+                    emotion_info = f"[{emotion} ({confidence:.1f}%)] "
+            elif 'emotions' in segment and segment['emotions']:
+                # Формат для модели wav2vec с тремя параметрами (A,D,V)
+                emotions = segment['emotions']
+                if emotions:
+                    arousal = emotions.get('возбуждение', 0)
+                    dominance = emotions.get('доминирование', 0)
+                    valence = emotions.get('валентность', 0)
+                    # Форматируем значения с двумя знаками после запятой
+                    emotion_info = f"[A:{arousal:.2f}, D:{dominance:.2f}, V:{valence:.2f}] "
+        
+        # Добавляем временные метки и информацию о спикере
+        formatted_text.append(f"[{start_time} -> {end_time}] {speaker}: {emotion_info}{text}")
+    
+    return "\n".join(formatted_text) 

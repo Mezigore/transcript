@@ -58,10 +58,15 @@ class AudioProcessingPipeline:
     
     @timed_execution('segmentation')
     def _segment_audio(self, audio_tensor: Tensor, sample_rate: int) -> List[Tensor]:
-        """Сегментация аудио на части для обработки."""
-        if audio_tensor.size(1) > sample_rate * 60:  # Если длиннее 1 минуты
-            return segment_audio(audio_tensor, sample_rate)
+        """Сегментация аудио на части для обработки.
+        Сегментируем только если аудио слишком длинное для обработки Whisper.
+        """
+        max_length_samples = sample_rate * 600  # 10 минут - максимальный размер для Whisper
+        if audio_tensor.size(1) > max_length_samples:
+            print("[INFO] Аудио слишком длинное, разделяю на сегменты...")
+            return segment_audio(audio_tensor, sample_rate, segment_length_sec=600)  # Делим на 10-минутные фрагменты
         else:
+            print("[INFO] Аудио будет обработано целиком")
             return [audio_tensor]
     
     @timed_execution('transcription')
@@ -69,24 +74,53 @@ class AudioProcessingPipeline:
         """Транскрибирование аудио."""
         all_transcriptions = []
         for i, segment_tensor in enumerate(audio_segments):
+            print(f"[DEBUG] Транскрибирую сегмент {i+1}/{len(audio_segments)}")
             segment_transcription = transcribe_audio(segment_tensor, sample_rate)
-            # Корректируем временные метки
-            segment_start = i * 30  # 30 секунд на сегмент
-            for trans in segment_transcription:
-                trans["start"] += segment_start
-                trans["end"] += segment_start
+            print(f"[DEBUG] Получено {len(segment_transcription)} сегментов транскрипции для сегмента {i+1}")
+            # Печатаем несколько первых сегментов для отладки
+            if len(segment_transcription) > 0:
+                print(f"[DEBUG] Пример сегмента: {segment_transcription[0]}")
             all_transcriptions.extend(segment_transcription)
+        print(f"[DEBUG] Всего получено {len(all_transcriptions)} сегментов транскрипции")
+        # Проверим дубликаты
+        text_times = [(s['start'], s['end'], s['text']) for s in all_transcriptions]
+        duplicates = []
+        for i, item in enumerate(text_times):
+            if text_times.count(item) > 1:
+                duplicates.append((i, item))
+        if duplicates:
+            print(f"[DEBUG] Найдено {len(duplicates)} дубликатов в транскрипции")
+            for idx, (start, end, text) in duplicates[:5]:  # показываем первые 5
+                print(f"[DEBUG] Дубликат {idx}: [{start}-{end}] {text[:50]}...")
         return all_transcriptions
     
     @timed_execution('diarization')
     def _diarize(self, audio_tensor: Tensor, sample_rate: int) -> List[Dict[str, Any]]:
         """Определение говорящих."""
-        return diarize(audio_tensor, sample_rate, self.hf_token)
+        diarization_results = diarize(audio_tensor, sample_rate, self.hf_token)
+        print(f"[DEBUG] Получено {len(diarization_results)} сегментов диаризации")
+        if diarization_results:
+            # Печатаем первые несколько сегментов
+            for i, segment in enumerate(diarization_results[:5]):
+                print(f"[DEBUG] Диаризация сегмент {i}: {segment}")
+            
+            # Проверяем дубликаты
+            speaker_times = [(s['start'], s['end'], s['speaker']) for s in diarization_results]
+            duplicates = []
+            for i, item in enumerate(speaker_times):
+                if speaker_times.count(item) > 1:
+                    duplicates.append((i, item))
+            if duplicates:
+                print(f"[DEBUG] Найдено {len(duplicates)} дубликатов в диаризации")
+                for idx, (start, end, speaker) in duplicates[:5]:
+                    print(f"[DEBUG] Дубликат {idx}: [{start}-{end}] Спикер: {speaker}")
+        
+        return diarization_results
     
     @timed_execution('emotion_analysis')
-    def _analyze_emotions(self, audio_tensor: Tensor, sample_rate: int, transcription_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _analyze_emotions(self, audio_tensor: Tensor, sample_rate: int, transcription_segments: List[Dict[str, Any]], emotion_engine: str = "wavlm") -> List[Dict[str, Any]]:
         """Анализ эмоций в речи."""
-        return analyze_emotions(audio_tensor, sample_rate, transcription_segments)
+        return analyze_emotions(audio_tensor, sample_rate, transcription_segments, emotion_engine)
     
     @timed_execution('merging')
     def _merge_results(self, diarized_segments: List[Dict[str, Any]], emotion_segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -98,17 +132,21 @@ class AudioProcessingPipeline:
         """Создание файла с результатами транскрипции."""
         base_output = os.path.splitext(os.path.basename(media_path))[0]
         output_path = f"{OUTPUT_DIR}/{base_output}_transcript.txt"
-        text = format_transcript(merged_segments, 100)
+        # Используем порог уверенности из конфигурации вместо жесткого значения 100
+        from config import OUTPUT_FORMAT
+        confidence_threshold = OUTPUT_FORMAT.get('min_confidence_threshold', 0.5) * 100
+        text = format_transcript(merged_segments, confidence_threshold)
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(text)
         return output_path
     
-    def process(self, media_path: str, skip_emotion_analysis: bool = False) -> ProcessingResult:
+    def process(self, media_path: str, skip_emotion_analysis: bool = False, emotion_engine: str = "wavlm") -> ProcessingResult:
         """Обработка медиа-файла через полный пайплайн.
         
         Args:
             media_path: Путь к медиа-файлу для обработки
             skip_emotion_analysis: Если True, шаг анализа эмоций будет пропущен
+            emotion_engine: Выбор движка эмоций ("wavlm" или "wav2vec")
         """
         start_time = time.time()
         try:
@@ -128,10 +166,11 @@ class AudioProcessingPipeline:
             if skip_emotion_analysis:
                 emotions = []  # Пустой список вместо результатов анализа эмоций
                 self.execution_times['emotion_analysis'] = "Пропущено"
+                merged = self._merge_results(diarization, transcription)
             else:
-                emotions = self._analyze_emotions(audio_tensor, sample_rate, transcription)
+                emotions = self._analyze_emotions(audio_tensor, sample_rate, transcription, emotion_engine)
+                merged = self._merge_results(diarization, emotions)
             
-            merged = self._merge_results(diarization, transcription if skip_emotion_analysis else emotions)
             output_path = self._create_output_file(merged, media_path)
             print(f"[INFO] Результаты транскрипции сохранены в {output_path}")
             # Добавляем общее время выполнения

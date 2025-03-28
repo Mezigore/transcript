@@ -58,13 +58,27 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
         print(f"[ОШИБКА] Транскрипция не удалась: {str(e)}")
         raise
     
-    # print(f"[INFO] Транскрипция завершена")
-    # print(f"[INFO] {len(result['segments'])} сегментов найдено")
-    # print(f"[INFO] Первый сегмент: {result['segments'][0]}")
+    print(f"[DEBUG] Whisper вернул {len(result['segments'])} сегментов")
+    if 'segments' in result and len(result['segments']) > 0:
+        for i, segment in enumerate(result['segments'][:3]):  # Показываем первые 3 сегмента
+            print(f"[DEBUG] Whisper сегмент {i}: start={segment['start']}, end={segment['end']}, text={segment['text'][:50]}...")
 
     # Преобразуем результаты в удобный формат
-    return [{
+    segments = [{
         'start': float(segment['start']),
         'end': float(segment['end']),
         'text': segment['text']
     } for segment in result['segments']]
+    
+    # Проверяем на наличие дубликатов в исходных данных Whisper
+    texts = [(s['start'], s['end'], s['text']) for s in segments]
+    duplicates = []
+    for i, item in enumerate(texts):
+        if texts.count(item) > 1:
+            duplicates.append((i, item))
+    if duplicates:
+        print(f"[DEBUG] Найдено {len(duplicates)} дубликатов прямо из Whisper!")
+        for idx, (start, end, text) in duplicates[:3]:
+            print(f"[DEBUG] Дубликат из Whisper {idx}: [{start}-{end}] {text[:50]}...")
+    
+    return segments
