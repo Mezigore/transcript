@@ -156,12 +156,16 @@ def merge_transcription_with_diarization(diarized_segments: List[Dict], text_and
                 if speaker_segment is not None:
                     timestamp_info = f"[{int(speaker_segment['start'] // 60)}:{int(speaker_segment['start'] % 60):02d} - {int(speaker_segment['end'] // 60)}:{int(speaker_segment['end'] % 60):02d}] " if OUTPUT_FORMAT['include_timestamps'] else ""
                     header = f"{timestamp_info}{speaker_segment['speaker']}:"
-                    formatted_segment = f"{header}\n {speaker_segment.get('text', '(Без транскрипции)')}"
+                    
+                    # Использовать реальный текст из транскрипции, если он есть
+                    segment_text = speaker_segment.get('text', '(Без транскрипции)')
+                    
+                    formatted_segment = f"{header}\n{segment_text}"
                     
                     merged_segments.append({
                         "start": speaker_segment["start"],
                         "end": speaker_segment["end"],
-                        "text": speaker_segment.get('text', '(Без транскрипции)'),
+                        "text": segment_text,
                         "speaker": speaker_segment["speaker"],
                         "emotion": "",
                         "emotion_confidence": 0.0,
@@ -172,24 +176,35 @@ def merge_transcription_with_diarization(diarized_segments: List[Dict], text_and
                 speaker_segment = {
                     "start": segment["start"],
                     "end": segment["end"],
-                    "speaker": speaker
+                    "speaker": speaker,
+                    "text": segment.get("text", "")  # Добавляем текст из сегмента, если он есть
                 }
                 current_speaker = speaker
             else:
                 # Продолжаем текущий сегмент
                 if speaker_segment is not None:
                     speaker_segment["end"] = segment["end"]
+                    # Объединяем текст если он есть
+                    if segment.get("text"):
+                        if speaker_segment.get("text"):
+                            speaker_segment["text"] += " " + segment["text"]
+                        else:
+                            speaker_segment["text"] = segment["text"]
         
         # Добавляем последний сегмент
         if speaker_segment is not None:
             timestamp_info = f"[{int(speaker_segment['start'] // 60)}:{int(speaker_segment['start'] % 60):02d} - {int(speaker_segment['end'] // 60)}:{int(speaker_segment['end'] % 60):02d}] " if OUTPUT_FORMAT['include_timestamps'] else ""
             header = f"{timestamp_info}{speaker_segment['speaker']}:"
-            formatted_segment = f"{header}\n {speaker_segment.get('text', '(Без транскрипции)')}"
+            
+            # Использовать реальный текст из транскрипции, если он есть
+            segment_text = speaker_segment.get('text', '(Без транскрипции)')
+            
+            formatted_segment = f"{header}\n{segment_text}"
             
             merged_segments.append({
                 "start": speaker_segment["start"],
                 "end": speaker_segment["end"],
-                "text": speaker_segment.get('text', '(Без транскрипции)'),
+                "text": segment_text,
                 "speaker": speaker_segment["speaker"],
                 "emotion": "",
                 "emotion_confidence": 0.0,

@@ -18,7 +18,7 @@ def format_time(seconds: float) -> str:
 
 def process_media(media_path: str, hf_token: Optional[str] = None) -> ProcessingResult:
     processor = AudioProcessingPipeline(hf_token or API_KEYS['huggingface'])
-    return processor.process(media_path)
+    return processor.process(media_path, skip_emotion_analysis=True)
 
 def handle_single_file():
     media_path = select_media_file()

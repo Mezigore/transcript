@@ -19,6 +19,7 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
                     audio_tensor.numpy()[0],
                     path_or_hf_repo=TRANSCRIPTION['model_path_mlx'],
                     initial_prompt=TRANSCRIPTION['initial_prompt'],
+                    verbose=True,
                     condition_on_previous_text=True,
                     word_timestamps=True,
                     hallucination_silence_threshold=2.0,
@@ -26,6 +27,7 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
                     logprob_threshold=-0.8,
                     no_speech_threshold=1.0,
                     temperature=(0.0, 0.2, 0.4),
+                    **{'language': 'ru'}
                 )
             except Exception as e:
                 raise RuntimeError(f"Ошибка транскрипции MLX Whisper: {str(e)}")
@@ -56,9 +58,9 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
         print(f"[ОШИБКА] Транскрипция не удалась: {str(e)}")
         raise
     
-    print(f"[INFO] Транскрипция завершена")
-    print(f"[INFO] {len(result['segments'])} сегментов найдено")
-    print(f"[INFO] Первый сегмент: {result['segments'][0]}")
+    # print(f"[INFO] Транскрипция завершена")
+    # print(f"[INFO] {len(result['segments'])} сегментов найдено")
+    # print(f"[INFO] Первый сегмент: {result['segments'][0]}")
 
     # Преобразуем результаты в удобный формат
     return [{

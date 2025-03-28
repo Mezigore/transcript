@@ -1,4 +1,5 @@
 mlx-whisper
+webrtcvad
 transformers
 pyannote.audio
 ffmpeg-python
@@ -7,3 +8,5 @@ tqdm
 pydub
 librosa
 ffmpeg
+torch
+torchaudio

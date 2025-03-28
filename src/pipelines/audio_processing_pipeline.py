@@ -131,7 +131,7 @@ class AudioProcessingPipeline:
             else:
                 emotions = self._analyze_emotions(audio_tensor, sample_rate, transcription)
             
-            merged = self._merge_results(diarization, emotions)
+            merged = self._merge_results(diarization, transcription if skip_emotion_analysis else emotions)
             output_path = self._create_output_file(merged, media_path)
             print(f"[INFO] Результаты транскрипции сохранены в {output_path}")
             # Добавляем общее время выполнения

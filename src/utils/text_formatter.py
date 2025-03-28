@@ -18,7 +18,7 @@ def format_segment_text(text, max_line_length=None, indent=" "):
     return textwrap.fill(
         text,
         width=max_line_length - len(indent),
-        initial_indent=indent,
+        initial_indent="",
         subsequent_indent=indent,
         break_long_words=False,
         break_on_hyphens=False
