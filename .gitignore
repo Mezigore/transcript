@@ -15,3 +15,8 @@ __pycache__
 *.DS_Store
 _old
 output
+.cursor
+.conda
+.vscode
+.venv
+.idea

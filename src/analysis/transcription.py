@@ -19,15 +19,15 @@ def transcribe_audio(audio_tensor: Tensor, sample_rate: int) -> List[dict[str, A
                     audio_tensor.numpy()[0],
                     path_or_hf_repo=TRANSCRIPTION['model_path_mlx'],
                     initial_prompt=TRANSCRIPTION['initial_prompt'],
-                    verbose=True,
-                    condition_on_previous_text=True,
+                    verbose=False,
+                    # temperature=(0.0, 0.2, 0.5),
+                    condition_on_previous_text=False,
                     word_timestamps=True,
                     hallucination_silence_threshold=2.0,
-                    compression_ratio_threshold=2.0,
-                    logprob_threshold=-0.8,
                     no_speech_threshold=1.0,
-                    temperature=(0.0, 0.2, 0.4),
-                    **{'language': 'ru'}
+                    compression_ratio_threshold=None,
+                    logprob_threshold=None,
+                    language="ru"
                 )
             except Exception as e:
                 raise RuntimeError(f"Ошибка транскрипции MLX Whisper: {str(e)}")

@@ -4,9 +4,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Tuple
 from torch import Tensor
+from tqdm import tqdm
 from ..utils.segment_merger import merge_transcription_with_diarization
 from ..utils.text_formatter import format_transcript
-from ..audio.processing import extract_and_process_audio
+from ..audio import extract_and_process_audio
 from ..audio.segmentation import segment_audio, vad_filter
 from ..analysis.transcription import transcribe_audio
 from ..analysis.diarization import diarize
@@ -51,7 +52,15 @@ class AudioProcessingPipeline:
     @timed_execution('audio_extraction')
     def _extract_audio(self, media_path: str) -> Tuple[Tensor, int]:
         """Извлечение и обработка аудио."""
-        audio_tensor, sample_rate = extract_and_process_audio(media_path, output_path=TEMP_DIR + "_temp_audio.wav")
+        result = extract_and_process_audio(media_path, output_path=TEMP_DIR + "_temp_audio.wav")
+        
+        if result[0] is None or result[1] is None:
+            raise RuntimeError("Не удалось извлечь аудио из медиа-файла")
+            
+        # Явное приведение типов, поскольку знаем, что None уже проверили
+        audio_tensor = result[0]  # type: Tensor
+        sample_rate = result[1]   # type: int
+        
         # Дополнительная обработка VAD для удаления тишины
         filtered_tensor = vad_filter(audio_tensor, sample_rate)
         return filtered_tensor, sample_rate
@@ -64,7 +73,9 @@ class AudioProcessingPipeline:
         max_length_samples = sample_rate * 600  # 10 минут - максимальный размер для Whisper
         if audio_tensor.size(1) > max_length_samples:
             print("[INFO] Аудио слишком длинное, разделяю на сегменты...")
-            return segment_audio(audio_tensor, sample_rate, segment_length_sec=600)  # Делим на 10-минутные фрагменты
+            segments = segment_audio(audio_tensor, sample_rate, segment_length_sec=600)  # Делим на 10-минутные фрагменты
+            print(f"[INFO] Аудио разделено на {len(segments)} сегментов")
+            return segments
         else:
             print("[INFO] Аудио будет обработано целиком")
             return [audio_tensor]
@@ -73,14 +84,20 @@ class AudioProcessingPipeline:
     def _transcribe(self, audio_segments: List[Tensor], sample_rate: int) -> List[Dict[str, Any]]:
         """Транскрибирование аудио."""
         all_transcriptions = []
-        for i, segment_tensor in enumerate(audio_segments):
-            print(f"[DEBUG] Транскрибирую сегмент {i+1}/{len(audio_segments)}")
-            segment_transcription = transcribe_audio(segment_tensor, sample_rate)
-            print(f"[DEBUG] Получено {len(segment_transcription)} сегментов транскрипции для сегмента {i+1}")
-            # Печатаем несколько первых сегментов для отладки
-            if len(segment_transcription) > 0:
-                print(f"[DEBUG] Пример сегмента: {segment_transcription[0]}")
-            all_transcriptions.extend(segment_transcription)
+        
+        # Добавляем индикатор прогресса
+        with tqdm(total=len(audio_segments), desc="Транскрипция аудио", 
+                 bar_format='{desc}: |{bar}| {n_fmt}/{total_fmt} сегментов [{elapsed}<{remaining}]') as pbar:
+            for i, segment_tensor in enumerate(audio_segments):
+                print(f"[DEBUG] Транскрибирую сегмент {i+1}/{len(audio_segments)}")
+                segment_transcription = transcribe_audio(segment_tensor, sample_rate)
+                print(f"[DEBUG] Получено {len(segment_transcription)} сегментов транскрипции для сегмента {i+1}")
+                # Печатаем несколько первых сегментов для отладки
+                if len(segment_transcription) > 0:
+                    print(f"[DEBUG] Пример сегмента: {segment_transcription[0]}")
+                all_transcriptions.extend(segment_transcription)
+                pbar.update(1)
+                
         print(f"[DEBUG] Всего получено {len(all_transcriptions)} сегментов транскрипции")
         # Проверим дубликаты
         text_times = [(s['start'], s['end'], s['text']) for s in all_transcriptions]
@@ -156,22 +173,70 @@ class AudioProcessingPipeline:
             # Подготовка директорий
             ensure_directories()
 
-            # Основные шаги обработки
-            audio_tensor, sample_rate = self._extract_audio(media_path)
-            audio_segments = self._segment_audio(audio_tensor, sample_rate)
-            transcription = self._transcribe(audio_segments, sample_rate)
-            diarization = self._diarize(audio_tensor, sample_rate)
+            # Отображаем общий прогресс
+            print(f"[INFO] Запуск обработки файла: {media_path}")
+            print(f"[INFO] Используем движок эмоций: {emotion_engine}")
             
-            # Пропускаем анализ эмоций, если указано
-            if skip_emotion_analysis:
-                emotions = []  # Пустой список вместо результатов анализа эмоций
-                self.execution_times['emotion_analysis'] = "Пропущено"
-                merged = self._merge_results(diarization, transcription)
-            else:
-                emotions = self._analyze_emotions(audio_tensor, sample_rate, transcription, emotion_engine)
-                merged = self._merge_results(diarization, emotions)
+            # Создаем индикатор общего прогресса
+            stages = ['Извлечение аудио', 'Сегментация', 'Транскрипция', 'Диаризация', 
+                     'Анализ эмоций' if not skip_emotion_analysis else 'Пропуск анализа эмоций', 
+                     'Объединение данных', 'Создание файла']
             
-            output_path = self._create_output_file(merged, media_path)
+            with tqdm(total=len(stages), desc="Общий прогресс", 
+                     bar_format='{desc}: |{bar}| {n_fmt}/{total_fmt} этапов [{elapsed}<{remaining}]') as main_progress:
+                
+                # Основные шаги обработки
+                main_progress.set_description(f"Этап: {stages[0]}")
+                audio_tensor, sample_rate = self._extract_audio(media_path)
+                main_progress.update(1)
+                
+                main_progress.set_description(f"Этап: {stages[1]}")
+                audio_segments = self._segment_audio(audio_tensor, sample_rate)
+                main_progress.update(1)
+                
+                main_progress.set_description(f"Этап: {stages[2]}")
+                transcription = self._transcribe(audio_segments, sample_rate)
+                main_progress.update(1)
+                
+                main_progress.set_description(f"Этап: {stages[3]}")
+                diarization = self._diarize(audio_tensor, sample_rate)
+                main_progress.update(1)
+                
+                # Пропускаем анализ эмоций, если указано
+                if skip_emotion_analysis:
+                    main_progress.set_description(f"Этап: {stages[4]}")
+                    print("[INFO] Анализ эмоций пропущен по запросу пользователя")
+                    emotions = []  # Пустой список вместо результатов анализа эмоций
+                    self.execution_times['emotion_analysis'] = "Пропущено"
+                    # Используем транскрипцию вместо эмоций для слияния
+                    main_progress.update(1)
+                    
+                    main_progress.set_description(f"Этап: {stages[5]}")
+                    merged = self._merge_results(diarization, transcription)
+                    main_progress.update(1)
+                else:
+                    # Важно! Сначала анализируем эмоции на основе транскрипции
+                    main_progress.set_description(f"Этап: {stages[4]}")
+                    emotions = self._analyze_emotions(audio_tensor, sample_rate, transcription, emotion_engine)
+                    main_progress.update(1)
+                    
+                    main_progress.set_description(f"Этап: {stages[5]}")
+                    if len(emotions) == 0:
+                        print("[WARNING] Не удалось получить результаты анализа эмоций, используем сырую транскрипцию")
+                        # Если не удалось получить эмоции, используем транскрипцию
+                        merged = self._merge_results(diarization, transcription)
+                    else:
+                        print(f"[INFO] Получено {len(emotions)} сегментов с эмоциями")
+                        # Затем передаем результаты анализа эмоций, а не транскрипцию, для слияния
+                        merged = self._merge_results(diarization, emotions)
+                    main_progress.update(1)
+                
+                main_progress.set_description(f"Этап: {stages[6]}")
+                output_path = self._create_output_file(merged, media_path)
+                main_progress.update(1)
+                
+                main_progress.set_description("✅ Обработка завершена!")
+                
             print(f"[INFO] Результаты транскрипции сохранены в {output_path}")
             # Добавляем общее время выполнения
             self.execution_times['Общее время'] = format_time(time.time() - start_time)
